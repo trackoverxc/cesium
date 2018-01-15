@@ -1,8 +1,6 @@
-/*global define*/
 define([
         '../Core/AssociativeArray',
         '../Core/Color',
-        '../Core/ColorGeometryInstanceAttribute',
         '../Core/defined',
         '../Core/DistanceDisplayCondition',
         '../Core/DistanceDisplayConditionGeometryInstanceAttribute',
@@ -13,7 +11,6 @@ define([
     ], function(
         AssociativeArray,
         Color,
-        ColorGeometryInstanceAttribute,
         defined,
         DistanceDisplayCondition,
         DistanceDisplayConditionGeometryInstanceAttribute,
@@ -21,7 +18,7 @@ define([
         GroundPrimitive,
         BoundingSphereState,
         Property) {
-    "use strict";
+    'use strict';
 
     var colorScratch = new Color();
     var distanceDisplayConditionScratch = new DistanceDisplayCondition();
@@ -222,7 +219,7 @@ define([
         if (!primitive.ready) {
             return BoundingSphereState.PENDING;
         }
-        
+
         var bs = primitive.getBoundingSphere(entity);
         if (!defined(bs)) {
             return BoundingSphereState.FAILED;
@@ -316,11 +313,12 @@ define([
         var batchesCopyCount = batchesArrayCopy.length;
         for (i = 0; i < batchesCopyCount; ++i) {
             var batch = batchesArrayCopy[i];
-            if (batch.geometry.length === 0) {
-                batches.remove(batch.key);
-            } else if (batch.isDirty) {
+            if (batch.isDirty) {
                 isUpdated = batchesArrayCopy[i].update(time) && isUpdated;
                 batch.isDirty = false;
+            }
+            if (batch.geometry.length === 0) {
+                batches.remove(batch.key);
             }
         }
 

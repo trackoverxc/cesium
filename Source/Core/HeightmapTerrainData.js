@@ -1,4 +1,3 @@
-/*global define*/
 define([
         '../ThirdParty/when',
         './defaultValue',
@@ -143,6 +142,16 @@ define([
 
     defineProperties(HeightmapTerrainData.prototype, {
         /**
+         * An array of credits for this tile.
+         * @memberof HeightmapTerrainData.prototype
+         * @type {Credit[]}
+         */
+        credits : {
+            get : function() {
+                return undefined;
+            }
+        },
+        /**
          * The water mask included in this terrain data, if any.  A water mask is a rectangular
          * Uint8Array or image where a value of 255 indicates water and a value of 0 indicates land.
          * Values in between 0 and 255 are allowed as well to smoothly blend between land and water.
@@ -206,6 +215,7 @@ define([
         var verticesPromise = taskProcessor.scheduleTask({
             heightmap : this._buffer,
             structure : structure,
+            includeWebMercatorT : true,
             width : this._width,
             height : this._height,
             nativeRectangle : nativeRectangle,
@@ -232,7 +242,7 @@ define([
                     result.maximumHeight,
                     result.boundingSphere3D,
                     result.occludeePointInScaledSpace,
-                    6,
+                    result.numberOfAttributes,
                     result.orientedBoundingBox,
                     TerrainEncoding.clone(result.encoding),
                     exaggeration);

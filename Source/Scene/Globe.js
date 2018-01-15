@@ -1,4 +1,3 @@
-/*global define*/
 define([
         '../Core/BoundingSphere',
         '../Core/buildModuleUrl',
@@ -12,7 +11,6 @@ define([
         '../Core/Ellipsoid',
         '../Core/EllipsoidTerrainProvider',
         '../Core/Event',
-        '../Core/GeographicProjection',
         '../Core/IntersectionTests',
         '../Core/loadImage',
         '../Core/Ray',
@@ -26,6 +24,7 @@ define([
         './GlobeSurfaceShaderSet',
         './GlobeSurfaceTileProvider',
         './ImageryLayerCollection',
+        './Material',
         './QuadtreePrimitive',
         './SceneMode',
         './ShadowMode'
@@ -42,7 +41,6 @@ define([
         Ellipsoid,
         EllipsoidTerrainProvider,
         Event,
-        GeographicProjection,
         IntersectionTests,
         loadImage,
         Ray,
@@ -56,6 +54,7 @@ define([
         GlobeSurfaceShaderSet,
         GlobeSurfaceTileProvider,
         ImageryLayerCollection,
+        Material,
         QuadtreePrimitive,
         SceneMode,
         ShadowMode) {
@@ -82,14 +81,7 @@ define([
         this._imageryLayerCollection = imageryLayerCollection;
 
         this._surfaceShaderSet = new GlobeSurfaceShaderSet();
-
-        this._surfaceShaderSet.baseVertexShaderSource = new ShaderSource({
-            sources : [GroundAtmosphere, GlobeVS]
-        });
-
-        this._surfaceShaderSet.baseFragmentShaderSource = new ShaderSource({
-            sources : [GlobeFS]
-        });
+        this._material = undefined;
 
         this._surface = new QuadtreePrimitive({
             tileProvider : new GlobeSurfaceTileProvider({
@@ -101,6 +93,8 @@ define([
 
         this._terrainProvider = terrainProvider;
         this._terrainProviderChanged = new Event();
+
+        makeShadersDirty(this);
 
         /**
          * Determines if the globe will be shown.
@@ -238,6 +232,20 @@ define([
             }
         },
         /**
+         * A property specifying a {@link ClippingPlaneCollection} used to selectively disable rendering on the outside of each plane. Clipping planes are not currently supported in Internet Explorer.
+         *
+         * @memberof Globe.prototype
+         * @type {ClippingPlaneCollection}
+         */
+        clippingPlanes : {
+            get : function() {
+                return this._surface.tileProvider.clippingPlanes;
+            },
+            set : function(value) {
+                this._surface.tileProvider.clippingPlanes = value;
+            }
+        },
+        /**
          * The terrain provider providing surface geometry for this globe.
          * @type {TerrainProvider}
          *
@@ -253,6 +261,9 @@ define([
                 if (value !== this._terrainProvider) {
                     this._terrainProvider = value;
                     this._terrainProviderChanged.raiseEvent(value);
+                    if (defined(this._material)) {
+                        makeShadersDirty(this);
+                    }
                 }
             }
         },
@@ -279,8 +290,53 @@ define([
             get: function() {
                 return this._surface.tileLoadProgressEvent;
             }
+        },
+
+        /**
+         * Gets or sets the material appearance of the Globe.  This can be one of several built-in {@link Material} objects or a custom material, scripted with
+         * {@link https://github.com/AnalyticalGraphicsInc/cesium/wiki/Fabric|Fabric}.
+         * @memberof Globe.prototype
+         * @type {Material}
+         */
+        material: {
+            get: function() {
+                return this._material;
+            },
+            set: function(material) {
+                if (this._material !== material) {
+                    this._material = material;
+                    makeShadersDirty(this);
+                }
+            }
         }
     });
+
+    function makeShadersDirty(globe) {
+        var defines = [];
+
+        var requireNormals = defined(globe._material) && (globe._material.shaderSource.match(/slope/) || globe._material.shaderSource.match('normalEC'));
+
+        var fragmentSources = [];
+        if (defined(globe._material) && (!requireNormals || globe._terrainProvider.requestVertexNormals)) {
+            fragmentSources.push(globe._material.shaderSource);
+            defines.push('APPLY_MATERIAL');
+            globe._surface._tileProvider.uniformMap = globe._material._uniforms;
+        } else {
+            globe._surface._tileProvider.uniformMap = undefined;
+        }
+        fragmentSources.push(GlobeFS);
+
+        globe._surfaceShaderSet.baseVertexShaderSource = new ShaderSource({
+            sources : [GroundAtmosphere, GlobeVS],
+            defines : defines
+        });
+
+        globe._surfaceShaderSet.baseFragmentShaderSource = new ShaderSource({
+            sources : fragmentSources,
+            defines : defines
+        });
+        globe._surfaceShaderSet.material = globe._material;
+    }
 
     function createComparePickTileFunction(rayOrigin) {
         return function(a, b) {
@@ -373,6 +429,10 @@ define([
     var scratchGetHeightCartographic = new Cartographic();
     var scratchGetHeightRay = new Ray();
 
+    function tileIfContainsCartographic(tile, cartographic) {
+        return Rectangle.contains(tile.rectangle, cartographic) ? tile : undefined;
+    }
+
     /**
      * Get the height of the surface at a given cartographic.
      *
@@ -407,15 +467,10 @@ define([
         }
 
         while (tile.renderable) {
-            var children = tile.children;
-            length = children.length;
-
-            for (i = 0; i < length; ++i) {
-                tile = children[i];
-                if (Rectangle.contains(tile.rectangle, cartographic)) {
-                    break;
-                }
-            }
+            tile = tileIfContainsCartographic(tile.southwestChild, cartographic) ||
+                   tileIfContainsCartographic(tile.southeastChild, cartographic) ||
+                   tileIfContainsCartographic(tile.northwestChild, cartographic) ||
+                   tile.northeastChild;
         }
 
         while (defined(tile) && (!defined(tile.data) || !defined(tile.data.pickTerrain))) {
@@ -427,10 +482,27 @@ define([
         }
 
         var ellipsoid = this._surface._tileProvider.tilingScheme.ellipsoid;
-        var cartesian = ellipsoid.cartographicToCartesian(cartographic, scratchGetHeightCartesian);
+
+        //cartesian has to be on the ellipsoid surface for `ellipsoid.geodeticSurfaceNormal`
+        var cartesian = Cartesian3.fromRadians(cartographic.longitude, cartographic.latitude, 0.0, ellipsoid, scratchGetHeightCartesian);
 
         var ray = scratchGetHeightRay;
-        Cartesian3.normalize(cartesian, ray.direction);
+        var surfaceNormal = ellipsoid.geodeticSurfaceNormal(cartesian, ray.direction);
+
+        // Try to find the intersection point between the surface normal and z-axis.
+        // minimum height (-11500.0) for the terrain set, need to get this information from the terrain provider
+        var rayOrigin = ellipsoid.getSurfaceNormalIntersectionWithZAxis(cartesian, 11500.0, ray.origin);
+
+        // Theoretically, not with Earth datums, the intersection point can be outside the ellipsoid
+        if (!defined(rayOrigin)) {
+            // intersection point is outside the ellipsoid, try other value
+            // minimum height (-11500.0) for the terrain set, need to get this information from the terrain provider
+            var magnitude = Math.min(defaultValue(tile.data.minimumHeight, 0.0),-11500.0);
+
+            // multiply by the *positive* value of the magnitude
+            var vectorToMinimumPoint = Cartesian3.multiplyByScalar(surfaceNormal, Math.abs(magnitude) + 1, scratchGetHeightIntersection);
+            Cartesian3.subtract(cartesian, vectorToMinimumPoint, ray.origin);
+        }
 
         var intersection = tile.data.pick(ray, undefined, undefined, false, scratchGetHeightIntersection);
         if (!defined(intersection)) {
@@ -510,6 +582,10 @@ define([
     Globe.prototype.update = function(frameState) {
         if (!this.show) {
             return;
+        }
+
+        if (defined(this._material)) {
+            this._material.update(frameState.context);
         }
 
         var surface = this._surface;

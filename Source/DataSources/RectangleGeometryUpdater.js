@@ -1,4 +1,3 @@
-/*global define*/
 define([
         '../Core/Color',
         '../Core/ColorGeometryInstanceAttribute',
@@ -245,7 +244,7 @@ define([
          * Gets the property specifying whether the geometry
          * casts or receives shadows from each light source.
          * @memberof RectangleGeometryUpdater.prototype
-         * 
+         *
          * @type {Property}
          * @readonly
          */
@@ -534,7 +533,8 @@ define([
             !Property.isConstant(rotation) || //
             !Property.isConstant(outlineWidth) || //
             !Property.isConstant(closeBottom) || //
-            !Property.isConstant(closeTop)) {
+            !Property.isConstant(closeTop) || //
+            (onTerrain && !Property.isConstant(material))) {
             if (!this._dynamic) {
                 this._dynamic = true;
                 this._geometryChanged.raiseEvent(this);

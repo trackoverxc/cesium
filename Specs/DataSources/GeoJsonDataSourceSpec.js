@@ -1,4 +1,3 @@
-/*global defineSuite*/
 defineSuite([
         'DataSources/GeoJsonDataSource',
         'Core/Cartesian3',
@@ -280,6 +279,19 @@ defineSuite([
         expect(dataSource.show).toBe(true);
     });
 
+    it('setting name raises changed event', function() {
+        var dataSource = new GeoJsonDataSource();
+
+        var spy = jasmine.createSpy('changedEvent');
+        dataSource.changedEvent.addEventListener(spy);
+
+        var newName = 'chester';
+        dataSource.name = newName;
+        expect(dataSource.name).toEqual(newName);
+        expect(spy.calls.count()).toEqual(1);
+        expect(spy).toHaveBeenCalledWith(dataSource);
+    });
+
     it('show sets underlying entity collection show.', function() {
         var dataSource = new GeoJsonDataSource();
 
@@ -465,7 +477,8 @@ defineSuite([
             var entityCollection = dataSource.entities;
             var entity = entityCollection.values[0];
             expect(entity.name).toBeUndefined();
-            expect(entity.properties).toBe(featureWithNullName.properties);
+            expect(entity.properties.name.getValue()).toBe(featureWithNullName.properties.name);
+            expect(entity.properties.getValue(time)).toEqual(featureWithNullName.properties);
             expect(entity.position.getValue(time)).toEqual(coordinatesToCartesian(featureWithNullName.geometry.coordinates));
             expect(entity.billboard).toBeDefined();
         });
@@ -596,6 +609,28 @@ defineSuite([
             var entity = entityCollection.values[0];
             expect(entity.billboard).toBeDefined();
             expect(entity.billboard.image.getValue()).toBe(image);
+        });
+    });
+
+    it('Works with point geometry and unknown simplystyle', function() {
+        var geojson = {
+            type : 'Point',
+            coordinates : [102.0, 0.5],
+            properties : {
+                'marker-size' : 'large',
+                'marker-symbol' : 'notAnIcon',
+                'marker-color' : '#ffffff'
+            }
+        };
+
+        var dataSource = new GeoJsonDataSource();
+        return dataSource.load(geojson).then(function() {
+            var entityCollection = dataSource.entities;
+            var entity = entityCollection.values[0];
+            expect(entity.billboard).toBeDefined();
+            return when(dataSource._pinBuilder.fromColor(Color.WHITE, 64)).then(function(image) {
+                expect(entity.billboard.image.getValue()).toBe(image);
+            });
         });
     });
 
@@ -774,11 +809,15 @@ defineSuite([
             var entities = entityCollection.values;
 
             var polygon = entities[0];
-            expect(polygon.properties).toBe(topoJson.objects.polygon.properties);
+            expect(polygon.properties.myProps.getValue()).toBe(topoJson.objects.polygon.properties.myProps);
+            expect(polygon.properties.getValue(time)).toEqual(topoJson.objects.polygon.properties);
+
             expect(polygon.polygon.hierarchy).toBeDefined();
 
             var lineString = entities[1];
-            expect(lineString.properties).toBe(topoJson.objects.lineString.properties);
+            expect(lineString.properties.myProps.getValue()).toBe(topoJson.objects.lineString.properties.myProps);
+            expect(lineString.properties.getValue(time)).toEqual(topoJson.objects.lineString.properties);
+
             expect(lineString.polyline).toBeDefined();
         });
     });
@@ -1111,11 +1150,8 @@ defineSuite([
             crs : null
         };
 
-        return GeoJsonDataSource.load(featureWithNullCrs).then(function() {
-            fail('should not be called');
-        }).otherwise(function(error) {
-            expect(error).toBeInstanceOf(RuntimeError);
-            expect(error.message).toContain('crs is null.');
+        return GeoJsonDataSource.load(featureWithNullCrs).then(function(dataSource) {
+            expect(dataSource.entities.values.length).toBe(0);
         });
     });
 

@@ -1,13 +1,12 @@
-/*global defineSuite*/
 defineSuite([
         'DataSources/PolylineVolumeGeometryUpdater',
         'Core/Cartesian2',
         'Core/Cartesian3',
         'Core/Color',
         'Core/ColorGeometryInstanceAttribute',
+        'Core/CornerType',
         'Core/DistanceDisplayCondition',
         'Core/DistanceDisplayConditionGeometryInstanceAttribute',
-        'Core/CornerType',
         'Core/JulianDate',
         'Core/ShowGeometryInstanceAttribute',
         'Core/TimeInterval',
@@ -17,7 +16,6 @@ defineSuite([
         'DataSources/Entity',
         'DataSources/GridMaterialProperty',
         'DataSources/PolylineVolumeGraphics',
-        'DataSources/PropertyArray',
         'DataSources/SampledProperty',
         'DataSources/TimeIntervalCollectionProperty',
         'Scene/PrimitiveCollection',
@@ -31,9 +29,9 @@ defineSuite([
         Cartesian3,
         Color,
         ColorGeometryInstanceAttribute,
+        CornerType,
         DistanceDisplayCondition,
         DistanceDisplayConditionGeometryInstanceAttribute,
-        CornerType,
         JulianDate,
         ShowGeometryInstanceAttribute,
         TimeInterval,
@@ -43,7 +41,6 @@ defineSuite([
         Entity,
         GridMaterialProperty,
         PolylineVolumeGraphics,
-        PropertyArray,
         SampledProperty,
         TimeIntervalCollectionProperty,
         PrimitiveCollection,
@@ -69,7 +66,7 @@ defineSuite([
 
     function createBasicPolylineVolume() {
         var polylineVolume = new PolylineVolumeGraphics();
-        polylineVolume.positions = new ConstantProperty(Cartesian3.fromRadiansArray([
+        polylineVolume.positions = new ConstantProperty(Cartesian3.fromDegreesArray([
             0, 0,
             1, 0,
             1, 1,

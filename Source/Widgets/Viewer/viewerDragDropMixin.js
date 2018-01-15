@@ -1,4 +1,3 @@
-/*global define*/
 define([
         '../../Core/defaultValue',
         '../../Core/defined',
@@ -9,7 +8,6 @@ define([
         '../../DataSources/CzmlDataSource',
         '../../DataSources/GeoJsonDataSource',
         '../../DataSources/KmlDataSource',
-        '../../Scene/GroundPrimitive',
         '../getElement'
     ], function(
         defaultValue,
@@ -21,7 +19,6 @@ define([
         CzmlDataSource,
         GeoJsonDataSource,
         KmlDataSource,
-        GroundPrimitive,
         getElement) {
     'use strict';
 

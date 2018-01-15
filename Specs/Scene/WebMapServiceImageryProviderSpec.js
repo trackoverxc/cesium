@@ -1,9 +1,7 @@
-/*global defineSuite*/
 defineSuite([
         'Scene/WebMapServiceImageryProvider',
         'Core/Cartographic',
         'Core/DefaultProxy',
-        'Core/defined',
         'Core/Ellipsoid',
         'Core/GeographicTilingScheme',
         'Core/loadImage',
@@ -11,6 +9,7 @@ defineSuite([
         'Core/Math',
         'Core/queryToObject',
         'Core/Rectangle',
+        'Core/RequestScheduler',
         'Core/WebMercatorTilingScheme',
         'Scene/GetFeatureInfoFormat',
         'Scene/Imagery',
@@ -19,13 +18,11 @@ defineSuite([
         'Scene/ImageryProvider',
         'Scene/ImageryState',
         'Specs/pollToPromise',
-        'ThirdParty/Uri',
-        'ThirdParty/when'
+        'ThirdParty/Uri'
     ], function(
         WebMapServiceImageryProvider,
         Cartographic,
         DefaultProxy,
-        defined,
         Ellipsoid,
         GeographicTilingScheme,
         loadImage,
@@ -33,6 +30,7 @@ defineSuite([
         CesiumMath,
         queryToObject,
         Rectangle,
+        RequestScheduler,
         WebMercatorTilingScheme,
         GetFeatureInfoFormat,
         Imagery,
@@ -41,9 +39,12 @@ defineSuite([
         ImageryProvider,
         ImageryState,
         pollToPromise,
-        Uri,
-        when) {
+        Uri) {
     'use strict';
+
+    beforeEach(function() {
+        RequestScheduler.clearForSpecs();
+    });
 
     afterEach(function() {
         loadImage.createImage = loadImage.defaultCreateImage;
@@ -118,7 +119,8 @@ defineSuite([
             layers : 'someLayer',
             parameters : {
                 something : 'foo',
-                another : false
+                another : false,
+                version: '1.3.0'
             }
         });
 
@@ -130,11 +132,16 @@ defineSuite([
                 var params = queryToObject(uri.query);
                 expect(params.something).toEqual('foo');
                 expect(params.another).toEqual('false');
+                expect(params.version).toEqual('1.3.0');
+
+                // Don't need to actually load image, but satisfy the request.
+                deferred.resolve(true);
             });
 
-            provider.requestImage(0, 0, 0);
+            return provider.requestImage(0, 0, 0).then(function(image) {
+                expect(loadImage.createImage).toHaveBeenCalled();
+            });
 
-            expect(loadImage.createImage).toHaveBeenCalled();
         });
     });
 
@@ -176,11 +183,14 @@ defineSuite([
             spyOn(loadImage, 'createImage').and.callFake(function(url, crossOrigin, deferred) {
                 var questionMarkCount = url.match(/\?/g).length;
                 expect(questionMarkCount).toEqual(1);
+
+                // Don't need to actually load image, but satisfy the request.
+                deferred.resolve(true);
             });
 
-            provider.requestImage(0, 0, 0);
-
-            expect(loadImage.createImage).toHaveBeenCalled();
+            return provider.requestImage(0, 0, 0).then(function(image) {
+                expect(loadImage.createImage).toHaveBeenCalled();
+            });
         });
     });
 
@@ -196,13 +206,15 @@ defineSuite([
             spyOn(loadImage, 'createImage').and.callFake(function(url, crossOrigin, deferred) {
                 var questionMarkCount = url.match(/\?/g).length;
                 expect(questionMarkCount).toEqual(1);
-
                 expect(url).not.toContain('&&');
+
+                // Don't need to actually load image, but satisfy the request.
+                deferred.resolve(true);
             });
 
-            provider.requestImage(0, 0, 0);
-
-            expect(loadImage.createImage).toHaveBeenCalled();
+            return provider.requestImage(0, 0, 0).then(function(image) {
+                expect(loadImage.createImage).toHaveBeenCalled();
+            });
         });
     });
 
@@ -222,6 +234,35 @@ defineSuite([
                 var uri = new Uri(url);
                 var params = queryToObject(uri.query);
                 expect(params.foo).toEqual('bar');
+
+                // Don't need to actually load image, but satisfy the request.
+                deferred.resolve(true);
+            });
+
+            provider.requestImage(0, 0, 0);
+
+            expect(loadImage.createImage).toHaveBeenCalled();
+        });
+    });
+
+    it('defaults WMS version to 1.1.1', function() {
+
+        var provider = new WebMapServiceImageryProvider({
+            url : 'made/up/wms/server?foo=bar',
+            layers : 'someLayer'
+        });
+
+        return pollToPromise(function() {
+            return provider.ready;
+        }).then(function() {
+            spyOn(loadImage, 'createImage').and.callFake(function(url, crossOrigin, deferred) {
+
+                var uri = new Uri(url);
+                var params = queryToObject(uri.query);
+                expect(params.version).toEqual('1.1.1');
+
+                // Don't need to actually load image, but satisfy the request.
+                deferred.resolve(true);
             });
 
             provider.requestImage(0, 0, 0);
@@ -260,7 +301,7 @@ defineSuite([
         });
     });
 
-    it('requestImage requests tiles with SRS EPSG:3857 when tiling scheme is WebMercatorTilingScheme', function() {
+    it('requestImage requests tiles with SRS EPSG:3857 when tiling scheme is WebMercatorTilingScheme, WMS 1.1.1', function() {
         var tilingScheme = new WebMercatorTilingScheme();
         var provider = new WebMapServiceImageryProvider({
             url : 'made/up/wms/server',
@@ -285,6 +326,219 @@ defineSuite([
                 var params = queryToObject(uri.query);
 
                 expect(params.srs).toEqual('EPSG:3857');
+                expect(params.version).toEqual('1.1.1');
+
+                var rect = tilingScheme.tileXYToNativeRectangle(0, 0, 0);
+                expect(params.bbox).toEqual(rect.west + ',' + rect.south + ',' + rect.east + ',' + rect.north);
+
+                loadImage.defaultCreateImage('Data/Images/Red16x16.png', crossOrigin, deferred);
+            });
+
+            return provider.requestImage(0, 0, 0).then(function(image) {
+                expect(loadImage.createImage).toHaveBeenCalled();
+                expect(image).toBeInstanceOf(Image);
+            });
+        });
+    });
+
+    it('requestImage requests tiles with CRS EPSG:3857 when tiling scheme is WebMercatorTilingScheme, WMS 1.3.0', function() {
+        var tilingScheme = new WebMercatorTilingScheme();
+        var provider = new WebMapServiceImageryProvider({
+            url : 'made/up/wms/server',
+            layers : 'someLayer',
+            tilingScheme : tilingScheme,
+            parameters: {
+              version: '1.3.0'
+            }
+        });
+
+        expect(provider.url).toEqual('made/up/wms/server');
+        expect(provider.layers).toEqual('someLayer');
+
+        return pollToPromise(function() {
+            return provider.ready;
+        }).then(function() {
+            expect(provider.tileWidth).toEqual(256);
+            expect(provider.tileHeight).toEqual(256);
+            expect(provider.maximumLevel).toBeUndefined();
+            expect(provider.tilingScheme).toBeInstanceOf(WebMercatorTilingScheme);
+            expect(provider.rectangle).toEqual(new WebMercatorTilingScheme().rectangle);
+
+            spyOn(loadImage, 'createImage').and.callFake(function(url, crossOrigin, deferred) {
+                var uri = new Uri(url);
+                var params = queryToObject(uri.query);
+
+                expect(params.crs).toEqual('EPSG:3857');
+                expect(params.version).toEqual('1.3.0');
+
+                var rect = tilingScheme.tileXYToNativeRectangle(0, 0, 0);
+                expect(params.bbox).toEqual(rect.west + ',' + rect.south + ',' + rect.east + ',' + rect.north);
+
+                loadImage.defaultCreateImage('Data/Images/Red16x16.png', crossOrigin, deferred);
+            });
+
+            return provider.requestImage(0, 0, 0).then(function(image) {
+                expect(loadImage.createImage).toHaveBeenCalled();
+                expect(image).toBeInstanceOf(Image);
+            });
+        });
+    });
+
+    it('requestImage requests tiles with SRS EPSG:4326 when tiling scheme is GeographicTilingScheme, WMS 1.1.1', function() {
+        var tilingScheme = new GeographicTilingScheme();
+        var provider = new WebMapServiceImageryProvider({
+            url : 'made/up/wms/server',
+            layers : 'someLayer',
+            tilingScheme : tilingScheme
+        });
+
+        expect(provider.url).toEqual('made/up/wms/server');
+        expect(provider.layers).toEqual('someLayer');
+
+        return pollToPromise(function() {
+            return provider.ready;
+        }).then(function() {
+            expect(provider.tileWidth).toEqual(256);
+            expect(provider.tileHeight).toEqual(256);
+            expect(provider.maximumLevel).toBeUndefined();
+            expect(provider.tilingScheme).toBeInstanceOf(GeographicTilingScheme);
+            expect(provider.rectangle).toEqual(new GeographicTilingScheme().rectangle);
+
+            spyOn(loadImage, 'createImage').and.callFake(function(url, crossOrigin, deferred) {
+                var uri = new Uri(url);
+                var params = queryToObject(uri.query);
+
+                expect(params.srs).toEqual('EPSG:4326');
+                expect(params.version).toEqual('1.1.1');
+
+                var rect = tilingScheme.tileXYToNativeRectangle(0, 0, 0);
+                expect(params.bbox).toEqual(rect.west + ',' + rect.south + ',' + rect.east + ',' + rect.north);
+
+                loadImage.defaultCreateImage('Data/Images/Red16x16.png', crossOrigin, deferred);
+            });
+
+            return provider.requestImage(0, 0, 0).then(function(image) {
+                expect(loadImage.createImage).toHaveBeenCalled();
+                expect(image).toBeInstanceOf(Image);
+            });
+        });
+    });
+
+    it('requestImage requests tiles with SRS EPSG:4326 when tiling scheme is GeographicTilingScheme, WMS 1.1.0', function() {
+        var tilingScheme = new GeographicTilingScheme();
+        var provider = new WebMapServiceImageryProvider({
+            url : 'made/up/wms/server',
+            layers : 'someLayer',
+            tilingScheme : tilingScheme,
+            parameters: {
+              version: '1.1.0'
+            }
+        });
+
+        expect(provider.url).toEqual('made/up/wms/server');
+        expect(provider.layers).toEqual('someLayer');
+
+        return pollToPromise(function() {
+            return provider.ready;
+        }).then(function() {
+            expect(provider.tileWidth).toEqual(256);
+            expect(provider.tileHeight).toEqual(256);
+            expect(provider.maximumLevel).toBeUndefined();
+            expect(provider.tilingScheme).toBeInstanceOf(GeographicTilingScheme);
+            expect(provider.rectangle).toEqual(new GeographicTilingScheme().rectangle);
+
+            spyOn(loadImage, 'createImage').and.callFake(function(url, crossOrigin, deferred) {
+                var uri = new Uri(url);
+                var params = queryToObject(uri.query);
+
+                expect(params.srs).toEqual('EPSG:4326');
+                expect(params.version).toEqual('1.1.0');
+
+                var rect = tilingScheme.tileXYToNativeRectangle(0, 0, 0);
+                expect(params.bbox).toEqual(rect.west + ',' + rect.south + ',' + rect.east + ',' + rect.north);
+
+                loadImage.defaultCreateImage('Data/Images/Red16x16.png', crossOrigin, deferred);
+            });
+
+            return provider.requestImage(0, 0, 0).then(function(image) {
+                expect(loadImage.createImage).toHaveBeenCalled();
+                expect(image).toBeInstanceOf(Image);
+            });
+        });
+    });
+
+    it('requestImage requests tiles with CRS CRS:84 when tiling scheme is GeographicTilingScheme, WMS 1.3.0', function() {
+        var tilingScheme = new GeographicTilingScheme();
+        var provider = new WebMapServiceImageryProvider({
+            url : 'made/up/wms/server',
+            layers : 'someLayer',
+            tilingScheme : tilingScheme,
+            parameters: {
+              version: '1.3.0'
+            }
+        });
+
+        expect(provider.url).toEqual('made/up/wms/server');
+        expect(provider.layers).toEqual('someLayer');
+
+        return pollToPromise(function() {
+            return provider.ready;
+        }).then(function() {
+            expect(provider.tileWidth).toEqual(256);
+            expect(provider.tileHeight).toEqual(256);
+            expect(provider.maximumLevel).toBeUndefined();
+            expect(provider.tilingScheme).toBeInstanceOf(GeographicTilingScheme);
+            expect(provider.rectangle).toEqual(new GeographicTilingScheme().rectangle);
+
+            spyOn(loadImage, 'createImage').and.callFake(function(url, crossOrigin, deferred) {
+                var uri = new Uri(url);
+                var params = queryToObject(uri.query);
+
+                expect(params.crs).toEqual('CRS:84');
+                expect(params.version).toEqual('1.3.0');
+
+                var rect = tilingScheme.tileXYToNativeRectangle(0, 0, 0);
+                expect(params.bbox).toEqual(rect.west + ',' + rect.south + ',' + rect.east + ',' + rect.north);
+
+                loadImage.defaultCreateImage('Data/Images/Red16x16.png', crossOrigin, deferred);
+            });
+
+            return provider.requestImage(0, 0, 0).then(function(image) {
+                expect(loadImage.createImage).toHaveBeenCalled();
+                expect(image).toBeInstanceOf(Image);
+            });
+        });
+    });
+
+    it('requestImage requests tiles with CRS CRS:84 when tiling scheme is GeographicTilingScheme, WMS 1.3.1', function() {
+        var tilingScheme = new GeographicTilingScheme();
+        var provider = new WebMapServiceImageryProvider({
+            url : 'made/up/wms/server',
+            layers : 'someLayer',
+            tilingScheme : tilingScheme,
+            parameters: {
+              version: '1.3.1'
+            }
+        });
+
+        expect(provider.url).toEqual('made/up/wms/server');
+        expect(provider.layers).toEqual('someLayer');
+
+        return pollToPromise(function() {
+            return provider.ready;
+        }).then(function() {
+            expect(provider.tileWidth).toEqual(256);
+            expect(provider.tileHeight).toEqual(256);
+            expect(provider.maximumLevel).toBeUndefined();
+            expect(provider.tilingScheme).toBeInstanceOf(GeographicTilingScheme);
+            expect(provider.rectangle).toEqual(new GeographicTilingScheme().rectangle);
+
+            spyOn(loadImage, 'createImage').and.callFake(function(url, crossOrigin, deferred) {
+                var uri = new Uri(url);
+                var params = queryToObject(uri.query);
+
+                expect(params.crs).toEqual('CRS:84');
+                expect(params.version).toEqual('1.3.1');
 
                 var rect = tilingScheme.tileXYToNativeRectangle(0, 0, 0);
                 expect(params.bbox).toEqual(rect.west + ',' + rect.south + ',' + rect.east + ',' + rect.north);
@@ -317,11 +571,14 @@ defineSuite([
 
                 expect(params.format).toEqual('foo');
                 expect(params.format).not.toEqual('image/jpeg');
+
+                // Just return any old image.
+                loadImage.defaultCreateImage('Data/Images/Red16x16.png', crossOrigin, deferred);
             });
 
-            provider.requestImage(0, 0, 0);
-
-            expect(loadImage.createImage).toHaveBeenCalled();
+            return provider.requestImage(0, 0, 0).then(function(image) {
+                expect(loadImage.createImage).toHaveBeenCalled();
+            });
         });
     });
 
@@ -451,6 +708,9 @@ defineSuite([
                 if (tries < 3) {
                     error.retry = true;
                 }
+                setTimeout(function() {
+                    RequestScheduler.update();
+                }, 1);
             });
 
             loadImage.createImage = function(url, crossOrigin, deferred) {
@@ -468,6 +728,7 @@ defineSuite([
             var imagery = new Imagery(layer, 0, 0, 0);
             imagery.addReference();
             layer._requestImagery(imagery);
+            RequestScheduler.update();
 
             return pollToPromise(function() {
                 return imagery.state === ImageryState.RECEIVED;
@@ -673,6 +934,8 @@ defineSuite([
                 enablePickFeatures : false
             });
 
+            expect(provider.enablePickFeatures).toBe(false);
+
             return pollToPromise(function() {
                 return provider.ready;
             }).then(function() {
@@ -688,6 +951,7 @@ defineSuite([
             });
 
             provider.enablePickFeatures = false;
+            expect(provider.enablePickFeatures).toBe(false);
 
             return pollToPromise(function() {
                 return provider.ready;
@@ -704,6 +968,7 @@ defineSuite([
             });
 
             provider.enablePickFeatures = true;
+            expect(provider.enablePickFeatures).toBe(true);
 
             return pollToPromise(function() {
                 return provider.ready;

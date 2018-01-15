@@ -1,4 +1,3 @@
-/*global define*/
 define([
         '../Core/Cartesian2',
         '../Core/Cartesian3',
@@ -9,7 +8,6 @@ define([
         '../Core/defineProperties',
         '../Core/DeveloperError',
         '../Core/Event',
-        '../Core/GeographicProjection',
         '../Core/GeographicTilingScheme',
         '../Core/loadJson',
         '../Core/loadJsonp',
@@ -33,7 +31,6 @@ define([
         defineProperties,
         DeveloperError,
         Event,
-        GeographicProjection,
         GeographicTilingScheme,
         loadJson,
         loadJsonp,
@@ -94,7 +91,7 @@ define([
      *                                        a tiled server.
      *
      * @see BingMapsImageryProvider
-     * @see GoogleEarthImageryProvider
+     * @see GoogleEarthEnterpriseMapsProvider
      * @see createOpenStreetMapImageryProvider
      * @see SingleTileImageryProvider
      * @see createTileMapServiceImageryProvider
@@ -107,7 +104,7 @@ define([
      * var esri = new Cesium.ArcGisMapServerImageryProvider({
      *     url : 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer'
      * });
-     * 
+     *
      * @see {@link http://resources.esri.com/help/9.3/arcgisserver/apis/rest/|ArcGIS Server REST API}
      * @see {@link http://www.w3.org/TR/cors/|Cross-Origin Resource Sharing}
      */
@@ -208,7 +205,7 @@ define([
             }
 
             if (defined(data.copyrightText) && data.copyrightText.length > 0) {
-                that._credit = new Credit(data.copyrightText);
+                that._credit = new Credit({text: data.copyrightText});
             }
 
             that._ready = true;
@@ -548,6 +545,8 @@ define([
 
         /**
          * Gets the comma-separated list of layer IDs to show.
+         * @memberof ArcGisMapServerImageryProvider.prototype
+         *
          * @type {String}
          */
         layers : {
@@ -579,6 +578,7 @@ define([
      * @param {Number} x The tile X coordinate.
      * @param {Number} y The tile Y coordinate.
      * @param {Number} level The tile level.
+     * @param {Request} [request] The request object. Intended for internal use only.
      * @returns {Promise.<Image|Canvas>|undefined} A promise for the image that will resolve when the image is available, or
      *          undefined if there are too many active requests to the server, and the request
      *          should be retried later.  The resolved image may be either an
@@ -586,7 +586,7 @@ define([
      *
      * @exception {DeveloperError} <code>requestImage</code> must not be called before the imagery provider is ready.
      */
-    ArcGisMapServerImageryProvider.prototype.requestImage = function(x, y, level) {
+    ArcGisMapServerImageryProvider.prototype.requestImage = function(x, y, level, request) {
         //>>includeStart('debug', pragmas.debug);
         if (!this._ready) {
             throw new DeveloperError('requestImage must not be called before the imagery provider is ready.');
@@ -594,7 +594,7 @@ define([
         //>>includeEnd('debug');
 
         var url = buildImageUrl(this, x, y, level);
-        return ImageryProvider.loadImage(this, url);
+        return ImageryProvider.loadImage(this, url, request);
     };
 
     /**

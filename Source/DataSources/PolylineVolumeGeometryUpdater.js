@@ -1,4 +1,3 @@
-/*global define*/
 define([
         '../Core/Color',
         '../Core/ColorGeometryInstanceAttribute',
@@ -234,7 +233,7 @@ define([
          * Gets the property specifying whether the geometry
          * casts or receives shadows from each light source.
          * @memberof PolylineVolumeGeometryUpdater.prototype
-         * 
+         *
          * @type {Property}
          * @readonly
          */
@@ -359,7 +358,7 @@ define([
         } else {
             attributes = {
                 show : show,
-                distanceDisplayCondition : distanceDisplayConditionAttribute,
+                distanceDisplayCondition : distanceDisplayConditionAttribute
             };
         }
 

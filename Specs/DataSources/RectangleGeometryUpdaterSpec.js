@@ -1,4 +1,3 @@
-/*global defineSuite*/
 defineSuite([
         'DataSources/RectangleGeometryUpdater',
         'Core/Cartesian3',
@@ -237,6 +236,15 @@ defineSuite([
             data : false
         }));
         expect(updater.isDynamic).toBe(true);
+    });
+
+    it('A time-varying color causes ground geometry to be dynamic', function() {
+        var entity = createBasicRectangleWithoutHeight();
+        var updater = new RectangleGeometryUpdater(entity, scene);
+        var color = new SampledProperty(Color);
+        color.addSample(time, Color.WHITE);
+        entity.rectangle.material = new ColorMaterialProperty(color);
+        expect(updater.isDynamic).toBe(groundPrimitiveSupported);
     });
 
     function validateGeometryInstance(options) {

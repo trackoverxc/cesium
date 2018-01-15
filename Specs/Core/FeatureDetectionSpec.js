@@ -1,4 +1,3 @@
-/*global defineSuite*/
 defineSuite([
         'Core/FeatureDetection'
     ], function(
@@ -74,6 +73,18 @@ defineSuite([
             checkVersionArray(internetExplorerVersion);
 
             console.log('detected Internet Explorer ' + internetExplorerVersion.join('.'));
+        }
+    });
+
+    it('detects Edge', function() {
+        var isEdge = FeatureDetection.isEdge();
+        expect(typeof isEdge).toEqual('boolean');
+
+        if (isEdge) {
+            var edgeVersion = FeatureDetection.edgeVersion();
+            checkVersionArray(edgeVersion);
+
+            console.log('detected Edge ' + edgeVersion.join('.'));
         }
     });
 

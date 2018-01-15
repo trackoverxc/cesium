@@ -1,80 +1,103 @@
-/*global defineSuite*/
 defineSuite([
         'Core/BoundingSphere',
         'Core/Cartesian2',
         'Core/Cartesian3',
+        'Core/CesiumTerrainProvider',
         'Core/Color',
         'Core/defined',
         'Core/Ellipsoid',
         'Core/GeographicProjection',
         'Core/GeometryInstance',
+        'Core/Math',
+        'Core/PerspectiveFrustum',
         'Core/PixelFormat',
         'Core/Rectangle',
         'Core/RectangleGeometry',
         'Core/RuntimeError',
+        'Core/WebGLConstants',
         'Core/WebMercatorProjection',
         'Renderer/DrawCommand',
         'Renderer/Framebuffer',
+        'Renderer/Pass',
         'Renderer/PixelDatatype',
+        'Renderer/RenderState',
         'Renderer/ShaderProgram',
+        'Renderer/ShaderSource',
         'Renderer/Texture',
-        'Renderer/WebGLConstants',
         'Scene/Camera',
         'Scene/EllipsoidSurfaceAppearance',
         'Scene/FrameState',
         'Scene/Globe',
-        'Scene/Pass',
+        'Scene/Material',
         'Scene/Primitive',
         'Scene/PrimitiveCollection',
         'Scene/Scene',
+        'Scene/SceneTransforms',
         'Scene/ScreenSpaceCameraController',
         'Scene/TweenCollection',
         'Specs/createCanvas',
         'Specs/createScene',
-        'Specs/equals',
         'Specs/pollToPromise',
         'Specs/render'
     ], 'Scene/Scene', function(
         BoundingSphere,
         Cartesian2,
         Cartesian3,
+        CesiumTerrainProvider,
         Color,
         defined,
         Ellipsoid,
         GeographicProjection,
         GeometryInstance,
+        CesiumMath,
+        PerspectiveFrustum,
         PixelFormat,
         Rectangle,
         RectangleGeometry,
         RuntimeError,
+        WebGLConstants,
         WebMercatorProjection,
         DrawCommand,
         Framebuffer,
+        Pass,
         PixelDatatype,
+        RenderState,
         ShaderProgram,
+        ShaderSource,
         Texture,
-        WebGLConstants,
         Camera,
         EllipsoidSurfaceAppearance,
         FrameState,
         Globe,
-        Pass,
+        Material,
         Primitive,
         PrimitiveCollection,
         Scene,
+        SceneTransforms,
         ScreenSpaceCameraController,
         TweenCollection,
         createCanvas,
         createScene,
-        equals,
         pollToPromise,
         render) {
     'use strict';
 
     var scene;
+    var simpleShaderProgram;
+    var simpleRenderState;
 
     beforeAll(function() {
         scene = createScene();
+        simpleShaderProgram = ShaderProgram.fromCache({
+            context : scene.context,
+            vertexShaderSource : new ShaderSource({
+                sources : ['void main() { gl_Position = vec4(1.0); }']
+            }),
+            fragmentShaderSource : new ShaderSource({
+                sources : ['void main() { gl_FragColor = vec4(1.0); }']
+            })
+        });
+        simpleRenderState = new RenderState();
     });
 
     afterEach(function() {
@@ -82,7 +105,12 @@ defineSuite([
         scene.debugCommandFilter = undefined;
         scene.fxaa = false;
         scene.primitives.removeAll();
-        scene.morphTo3D();
+        scene.morphTo3D(0.0);
+
+        var camera = scene.camera;
+        camera.frustum = new PerspectiveFrustum();
+        camera.frustum.aspectRatio = scene.drawingBufferWidth / scene.drawingBufferHeight;
+        camera.frustum.fov = CesiumMath.toRadians(60.0);
     });
 
     afterAll(function() {
@@ -117,7 +145,7 @@ defineSuite([
         var contextAttributes = scene.context._gl.getContextAttributes();
         // Do not check depth and antialias since they are requests not requirements
         expect(contextAttributes.alpha).toEqual(false);
-        expect(contextAttributes.stencil).toEqual(false);
+        expect(contextAttributes.stencil).toEqual(true);
         expect(contextAttributes.premultipliedAlpha).toEqual(true);
         expect(contextAttributes.preserveDrawingBuffer).toEqual(false);
     });
@@ -165,10 +193,10 @@ defineSuite([
     });
 
     it('draws background color', function() {
-        expect(scene.renderForSpecs()).toEqual([0, 0, 0, 255]);
+        expect(scene).toRender([0, 0, 0, 255]);
 
         scene.backgroundColor = Color.BLUE;
-        expect(scene.renderForSpecs()).toEqual([0, 0, 255, 255]);
+        expect(scene).toRender([0, 0, 255, 255]);
     });
 
     it('calls afterRender functions', function() {
@@ -197,6 +225,8 @@ defineSuite([
 
     it('debugCommandFilter filters commands', function() {
         var c = new DrawCommand({
+            shaderProgram : simpleShaderProgram,
+            renderState : simpleRenderState,
             pass : Pass.OPAQUE
         });
         c.execute = function() {};
@@ -214,6 +244,8 @@ defineSuite([
 
     it('debugCommandFilter does not filter commands', function() {
         var c = new DrawCommand({
+            shaderProgram : simpleShaderProgram,
+            renderState : simpleRenderState,
             pass : Pass.OPAQUE
         });
         c.execute = function() {};
@@ -227,30 +259,31 @@ defineSuite([
     });
 
     it('debugShowBoundingVolume draws a bounding sphere', function() {
-        var radius = Cartesian3.magnitude(scene.camera.position) - 10.0;
+        var radius = 10.0;
+        var center = Cartesian3.add(scene.camera.position, scene.camera.direction, new Cartesian3());
 
         var c = new DrawCommand({
+            shaderProgram : simpleShaderProgram,
+            renderState : simpleRenderState,
             pass : Pass.OPAQUE,
             debugShowBoundingVolume : true,
-            boundingVolume : new BoundingSphere(Cartesian3.ZERO, radius)
+            boundingVolume : new BoundingSphere(center, radius)
         });
         c.execute = function() {};
 
         scene.primitives.add(new CommandMockPrimitive(c));
         scene.depthTestAgainstTerrain = true;
 
-        expect(scene.renderForSpecs()[0]).not.toEqual(0);  // Red bounding sphere
+        expect(scene).toRenderAndCall(function(rgba) {
+            expect(rgba[0]).not.toEqual(0);  // Red bounding sphere
+        });
     });
 
     it('debugShowCommands tints commands', function() {
         var c = new DrawCommand({
-            pass : Pass.OPAQUE,
-
-            shaderProgram : ShaderProgram.fromCache({
-                context : scene.context,
-                vertexShaderSource : 'void main() { gl_Position = vec4(1.0); }',
-                fragmentShaderSource : 'void main() { gl_FragColor = vec4(1.0); }'
-            })
+            shaderProgram : simpleShaderProgram,
+            renderState : simpleRenderState,
+            pass : Pass.OPAQUE
         });
         c.execute = function() {};
 
@@ -288,10 +321,11 @@ defineSuite([
         rectanglePrimitive.appearance.material.uniforms.color = new Color(1.0, 0.0, 0.0, 1.0);
 
         scene.primitives.add(rectanglePrimitive);
+        expect(scene).toRender([255, 0, 0, 255]);
 
-        expect(scene.renderForSpecs()).toEqual([255, 0, 0, 255]);
         scene.debugShowGlobeDepth = true;
-        expect(scene.renderForSpecs()).toEqual([0, 0, 0, 255]);
+        expect(scene).toRender([0, 0, 0, 255]);
+
         scene.debugShowGlobeDepth = false;
     });
 
@@ -309,18 +343,18 @@ defineSuite([
         primitives.add(rectanglePrimitive2);
 
         scene.camera.setView({ destination : rectangle });
-
-        var pixels = scene.renderForSpecs();
-        expect(pixels[0]).not.toEqual(0);
-        expect(pixels[1]).not.toEqual(0);
-        expect(pixels[2]).toEqual(0);
+        expect(scene).toRenderAndCall(function(rgba) {
+            expect(rgba[0]).not.toEqual(0);
+            expect(rgba[1]).not.toEqual(0);
+            expect(rgba[2]).toEqual(0);
+        });
 
         primitives.raiseToTop(rectanglePrimitive1);
-
-        pixels = scene.renderForSpecs();
-        expect(pixels[0]).not.toEqual(0);
-        expect(pixels[1]).not.toEqual(0);
-        expect(pixels[2]).toEqual(0);
+        expect(scene).toRenderAndCall(function(rgba) {
+            expect(rgba[0]).not.toEqual(0);
+            expect(rgba[1]).not.toEqual(0);
+            expect(rgba[2]).toEqual(0);
+        });
     });
 
     it('opaque/translucent render order (2)', function() {
@@ -337,35 +371,18 @@ defineSuite([
         primitives.add(rectanglePrimitive2);
 
         scene.camera.setView({ destination : rectangle });
-
-        var pixels = scene.renderForSpecs();
-        expect(pixels[0]).not.toEqual(0);
-        expect(pixels[1]).toEqual(0);
-        expect(pixels[2]).toEqual(0);
+        expect(scene).toRenderAndCall(function(rgba) {
+            expect(rgba[0]).not.toEqual(0);
+            expect(rgba[1]).toEqual(0);
+            expect(rgba[2]).toEqual(0);
+        });
 
         primitives.raiseToTop(rectanglePrimitive1);
-
-        pixels = scene.renderForSpecs();
-        expect(pixels[0]).not.toEqual(0);
-        expect(pixels[1]).toEqual(0);
-        expect(pixels[2]).toEqual(0);
-    });
-
-    it('renders fast path with no translucent primitives', function() {
-        var rectangle = Rectangle.fromDegrees(-100.0, 30.0, -90.0, 40.0);
-
-        var rectanglePrimitive = createRectangle(rectangle, 1000.0);
-        rectanglePrimitive.appearance.material.uniforms.color = new Color(1.0, 0.0, 0.0, 1.0);
-
-        var primitives = scene.primitives;
-        primitives.add(rectanglePrimitive);
-
-        scene.camera.setView({ destination : rectangle });
-
-        var pixels = scene.renderForSpecs();
-        expect(pixels[0]).not.toEqual(0);
-        expect(pixels[1]).toEqual(0);
-        expect(pixels[2]).toEqual(0);
+        expect(scene).toRenderAndCall(function(rgba) {
+            expect(rgba[0]).not.toEqual(0);
+            expect(rgba[1]).toEqual(0);
+            expect(rgba[2]).toEqual(0);
+        });
     });
 
     it('renders with OIT and without FXAA', function() {
@@ -378,13 +395,12 @@ defineSuite([
         primitives.add(rectanglePrimitive);
 
         scene.camera.setView({ destination : rectangle });
-
         scene.fxaa = false;
-
-        var pixels = scene.renderForSpecs();
-        expect(pixels[0]).not.toEqual(0);
-        expect(pixels[1]).toEqual(0);
-        expect(pixels[2]).toEqual(0);
+        expect(scene).toRenderAndCall(function(rgba) {
+            expect(rgba[0]).not.toEqual(0);
+            expect(rgba[1]).toEqual(0);
+            expect(rgba[2]).toEqual(0);
+        });
     });
 
     it('renders with forced FXAA', function() {
@@ -438,15 +454,16 @@ defineSuite([
 
         s.camera.setView({ destination : rectangle });
 
-        var pixels = s.renderForSpecs();
-        expect(pixels[0]).not.toEqual(0);
-        expect(pixels[1]).toEqual(0);
-        expect(pixels[2]).toEqual(0);
+        expect(s).toRenderAndCall(function(rgba) {
+            expect(rgba[0]).not.toEqual(0);
+            expect(rgba[1]).toEqual(0);
+            expect(rgba[2]).toEqual(0);
+        });
 
         s.destroyForSpecs();
     });
 
-    it('setting a central body', function() {
+    it('setting a globe', function() {
         var scene = createScene();
         var ellipsoid = Ellipsoid.UNIT_SPHERE;
         var globe = new Globe(ellipsoid);
@@ -470,19 +487,86 @@ defineSuite([
         scene.destroyForSpecs();
     });
 
-    it('renders a central body', function() {
-        var s = createScene();
+    describe('render tests', function() {
+        var s;
 
-        s.globe = new Globe(Ellipsoid.UNIT_SPHERE);
-        s.camera.position = new Cartesian3(1.02, 0.0, 0.0);
-        s.camera.up = Cartesian3.clone(Cartesian3.UNIT_Z);
-        s.camera.direction = Cartesian3.negate(Cartesian3.normalize(s.camera.position, new Cartesian3()), new Cartesian3());
+        beforeEach(function() {
+            s = createScene();
+        });
 
-        s.renderForSpecs();
+        afterEach(function() {
+            s.destroyForSpecs();
+        });
 
-        return pollToPromise(function() {
-            render(s.frameState, s.globe);
-            return !jasmine.matchersUtil.equals(s._context.readPixels(), [0, 0, 0, 0]);
+        it('renders a globe', function() {
+            s.globe = new Globe(Ellipsoid.UNIT_SPHERE);
+            s.camera.position = new Cartesian3(1.02, 0.0, 0.0);
+            s.camera.up = Cartesian3.clone(Cartesian3.UNIT_Z);
+            s.camera.direction = Cartesian3.negate(Cartesian3.normalize(s.camera.position, new Cartesian3()), new Cartesian3());
+
+            // To avoid Jasmine's spec has no expectations error
+            expect(true).toEqual(true);
+
+            return expect(s).toRenderAndCall(function() {
+                return pollToPromise(function() {
+                    render(s.frameState, s.globe);
+                    return !jasmine.matchersUtil.equals(s._context.readPixels(), [0, 0, 0, 0]);
+                });
+            });
+        });
+
+        it('renders a globe with an ElevationContour', function() {
+            s.globe = new Globe(Ellipsoid.UNIT_SPHERE);
+            s.globe.material = Material.fromType('ElevationContour');
+            s.camera.position = new Cartesian3(1.02, 0.0, 0.0);
+            s.camera.up = Cartesian3.clone(Cartesian3.UNIT_Z);
+            s.camera.direction = Cartesian3.negate(Cartesian3.normalize(s.camera.position, new Cartesian3()), new Cartesian3());
+
+            // To avoid Jasmine's spec has no expectations error
+            expect(true).toEqual(true);
+
+            return expect(s).toRenderAndCall(function() {
+                return pollToPromise(function() {
+                    render(s.frameState, s.globe);
+                    return !jasmine.matchersUtil.equals(s._context.readPixels(), [0, 0, 0, 0]);
+                });
+            });
+        });
+
+        it('renders a globe with a SlopeRamp', function() {
+            s.globe = new Globe(Ellipsoid.UNIT_SPHERE);
+            s.globe.material = Material.fromType('SlopeRamp');
+            s.camera.position = new Cartesian3(1.02, 0.0, 0.0);
+            s.camera.up = Cartesian3.clone(Cartesian3.UNIT_Z);
+            s.camera.direction = Cartesian3.negate(Cartesian3.normalize(s.camera.position, new Cartesian3()), new Cartesian3());
+
+            // To avoid Jasmine's spec has no expectations error
+            expect(true).toEqual(true);
+
+            return expect(s).toRenderAndCall(function() {
+                return pollToPromise(function() {
+                    render(s.frameState, s.globe);
+                    return !jasmine.matchersUtil.equals(s._context.readPixels(), [0, 0, 0, 0]);
+                });
+            });
+        });
+
+        it('renders a globe with a ElevationRamp', function() {
+            s.globe = new Globe(Ellipsoid.UNIT_SPHERE);
+            s.globe.material = Material.fromType('ElevationRamp');
+            s.camera.position = new Cartesian3(1.02, 0.0, 0.0);
+            s.camera.up = Cartesian3.clone(Cartesian3.UNIT_Z);
+            s.camera.direction = Cartesian3.negate(Cartesian3.normalize(s.camera.position, new Cartesian3()), new Cartesian3());
+
+            // To avoid Jasmine's spec has no expectations error
+            expect(true).toEqual(true);
+
+            return expect(s).toRenderAndCall(function() {
+                return pollToPromise(function() {
+                    render(s.frameState, s.globe);
+                    return !jasmine.matchersUtil.equals(s._context.readPixels(), [0, 0, 0, 0]);
+                });
+            });
         });
     });
 
@@ -503,10 +587,11 @@ defineSuite([
 
                 s.camera.setView({ destination : rectangle });
 
-                var pixels = s.renderForSpecs();
-                expect(pixels[0]).not.toEqual(0);
-                expect(pixels[1]).toEqual(0);
-                expect(pixels[2]).toEqual(0);
+                expect(s).toRenderAndCall(function(rgba) {
+                    expect(rgba[0]).not.toEqual(0);
+                    expect(rgba[1]).toEqual(0);
+                    expect(rgba[2]).toEqual(0);
+                });
             }
 
             s.destroyForSpecs();
@@ -532,10 +617,11 @@ defineSuite([
 
             s.camera.setView({ destination : rectangle });
 
-            var pixels = s.renderForSpecs();
-            expect(pixels[0]).not.toEqual(0);
-            expect(pixels[1]).toEqual(0);
-            expect(pixels[2]).toEqual(0);
+            expect(s).toRenderAndCall(function(rgba) {
+                expect(rgba[0]).not.toEqual(0);
+                expect(rgba[1]).toEqual(0);
+                expect(rgba[2]).toEqual(0);
+            });
         }
         s.destroyForSpecs();
     });
@@ -556,10 +642,11 @@ defineSuite([
             convert : false
         });
 
-        var pixels = scene.renderForSpecs();
-        expect(pixels[0]).not.toEqual(0);
-        expect(pixels[1]).toEqual(0);
-        expect(pixels[2]).toEqual(0);
+        expect(scene).toRenderAndCall(function(rgba) {
+            expect(rgba[0]).not.toEqual(0);
+            expect(rgba[1]).toEqual(0);
+            expect(rgba[2]).toEqual(0);
+        });
     });
 
     it('renders map when the camera is on the IDL in 2D', function() {
@@ -581,10 +668,11 @@ defineSuite([
             convert : false
         });
 
-        var pixels = s.renderForSpecs();
-        expect(pixels[0]).not.toEqual(0);
-        expect(pixels[1]).toEqual(0);
-        expect(pixels[2]).toEqual(0);
+        expect(s).toRenderAndCall(function(rgba) {
+            expect(rgba[0]).not.toEqual(0);
+            expect(rgba[1]).toEqual(0);
+            expect(rgba[2]).toEqual(0);
+        });
 
         s.destroyForSpecs();
     });
@@ -604,16 +692,21 @@ defineSuite([
 
             var uniformState = scene.context.uniformState;
 
-            scene.renderForSpecs();
-            expect(uniformState.globeDepthTexture).not.toBeDefined();
+            expect(scene).toRenderAndCall(function(rgba) {
+                expect(uniformState.globeDepthTexture).not.toBeDefined();
+            });
 
             scene.copyGlobeDepth = true;
-            scene.renderForSpecs();
-            expect(uniformState.globeDepthTexture).toBeDefined();
+            expect(scene).toRenderAndCall(function(rgba) {
+                expect(uniformState.globeDepthTexture).toBeDefined();
+            });
         }
 
         scene.destroyForSpecs();
     });
+
+    var pickedPosition3D = new Cartesian3(-455845.46867895435, -5210337.548977215, 3637549.8562320103);
+    var pickedPosition2D = new Cartesian3(-455861.7055871038, -5210523.137686572, 3637866.6638769475);
 
     it('pickPosition', function() {
         if (!scene.pickPositionSupported) {
@@ -623,24 +716,84 @@ defineSuite([
         var rectangle = Rectangle.fromDegrees(-100.0, 30.0, -90.0, 40.0);
         scene.camera.setView({ destination : rectangle });
 
-        scene.renderForSpecs();
+        var canvas = scene.canvas;
+        var windowPosition = new Cartesian2(canvas.clientWidth / 2, canvas.clientHeight / 2);
+
+        expect(scene).toRenderAndCall(function() {
+            var position = scene.pickPosition(windowPosition);
+            expect(position).not.toBeDefined();
+
+            var rectanglePrimitive = createRectangle(rectangle);
+            rectanglePrimitive.appearance.material.uniforms.color = new Color(1.0, 0.0, 0.0, 1.0);
+
+            var primitives = scene.primitives;
+            primitives.add(rectanglePrimitive);
+        });
+
+        expect(scene).toRenderAndCall(function() {
+            var position = scene.pickPosition(windowPosition);
+            expect(position).toEqualEpsilon(pickedPosition3D, CesiumMath.EPSILON6);
+        });
+    });
+
+    it('pickPosition in CV', function() {
+        if (!scene.pickPositionSupported) {
+            return;
+        }
+
+        scene.morphToColumbusView(0.0);
+
+        var rectangle = Rectangle.fromDegrees(-100.0, 30.0, -90.0, 40.0);
+        scene.camera.setView({ destination : rectangle });
 
         var canvas = scene.canvas;
         var windowPosition = new Cartesian2(canvas.clientWidth / 2, canvas.clientHeight / 2);
 
-        var position = scene.pickPosition(windowPosition);
-        expect(position).not.toBeDefined();
+        expect(scene).toRenderAndCall(function() {
+            var position = scene.pickPosition(windowPosition);
+            expect(position).not.toBeDefined();
 
-        var rectanglePrimitive = createRectangle(rectangle);
-        rectanglePrimitive.appearance.material.uniforms.color = new Color(1.0, 0.0, 0.0, 1.0);
+            var rectanglePrimitive = createRectangle(rectangle);
+            rectanglePrimitive.appearance.material.uniforms.color = new Color(1.0, 0.0, 0.0, 1.0);
 
-        var primitives = scene.primitives;
-        primitives.add(rectanglePrimitive);
+            var primitives = scene.primitives;
+            primitives.add(rectanglePrimitive);
+        });
 
-        scene.renderForSpecs();
+        expect(scene).toRenderAndCall(function() {
+            var position = scene.pickPosition(windowPosition);
+            expect(position).toEqualEpsilon(pickedPosition2D, CesiumMath.EPSILON6);
+        });
+    });
 
-        position = scene.pickPosition(windowPosition);
-        expect(position).toBeDefined();
+    it('pickPosition in 2D', function() {
+        if (!scene.pickPositionSupported) {
+            return;
+        }
+
+        scene.morphTo2D(0.0);
+
+        var rectangle = Rectangle.fromDegrees(-100.0, 30.0, -90.0, 40.0);
+        scene.camera.setView({ destination : rectangle });
+
+        var canvas = scene.canvas;
+        var windowPosition = new Cartesian2(canvas.clientWidth / 2, canvas.clientHeight / 2);
+
+        expect(scene).toRenderAndCall(function() {
+            var position = scene.pickPosition(windowPosition);
+            expect(position).not.toBeDefined();
+
+            var rectanglePrimitive = createRectangle(rectangle);
+            rectanglePrimitive.appearance.material.uniforms.color = new Color(1.0, 0.0, 0.0, 1.0);
+
+            var primitives = scene.primitives;
+            primitives.add(rectanglePrimitive);
+        });
+
+        expect(scene).toRenderAndCall(function() {
+            var position = scene.pickPosition(windowPosition);
+            expect(position).toEqualEpsilon(pickedPosition2D, CesiumMath.EPSILON6);
+        });
     });
 
     it('pickPosition returns undefined when useDepthPicking is false', function() {
@@ -663,18 +816,111 @@ defineSuite([
         primitives.add(rectanglePrimitive);
 
         scene.useDepthPicking = false;
-
-        scene.renderForSpecs();
-
-        var position = scene.pickPosition(windowPosition);
-        expect(position).not.toBeDefined();
+        expect(scene).toRenderAndCall(function() {
+            var position = scene.pickPosition(windowPosition);
+            expect(position).not.toBeDefined();
+        });
 
         scene.useDepthPicking = true;
+        expect(scene).toRenderAndCall(function() {
+            var position = scene.pickPosition(windowPosition);
+            expect(position).toBeDefined();
+        });
+    });
 
-        scene.renderForSpecs();
+    it('pickPosition picks translucent geometry when pickTranslucentDepth is true', function() {
+        if (!scene.pickPositionSupported) {
+            return;
+        }
 
-        position = scene.pickPosition(windowPosition);
-        expect(position).toBeDefined();
+        var rectangle = Rectangle.fromDegrees(-100.0, 30.0, -90.0, 40.0);
+        scene.camera.setView({
+            destination : rectangle
+        });
+
+        var canvas = scene.canvas;
+        var windowPosition = new Cartesian2(canvas.clientWidth / 2, canvas.clientHeight / 2);
+
+        var rectanglePrimitive = createRectangle(rectangle);
+        rectanglePrimitive.appearance.material.uniforms.color = new Color(1.0, 0.0, 0.0, 0.5);
+
+        var primitives = scene.primitives;
+        primitives.add(rectanglePrimitive);
+
+        scene.useDepthPicking = true;
+        scene.pickTranslucentDepth = false;
+        expect(scene).toRenderAndCall(function() {
+            var position = scene.pickPosition(windowPosition);
+            expect(position).not.toBeDefined();
+        });
+
+        scene.pickTranslucentDepth = true;
+        expect(scene).toRenderAndCall(function() {
+            var position = scene.pickPosition(windowPosition);
+            expect(position).toBeDefined();
+        });
+
+        var rectanglePrimitive2 = createRectangle(rectangle);
+        rectanglePrimitive2.appearance.material.uniforms.color = new Color(0.0, 1.0, 0.0, 0.5);
+        primitives.add(rectanglePrimitive2);
+
+        expect(scene).toRenderAndCall(function() {
+            var position = scene.pickPosition(windowPosition);
+            expect(position).toBeDefined();
+
+            var commandList = scene.frameState.commandList;
+            expect(commandList.length).toEqual(2);
+
+            var command1 = commandList[0];
+            var command2 = commandList[1];
+
+            expect(command1.derivedCommands).toBeDefined();
+            expect(command2.derivedCommands).toBeDefined();
+
+            expect(command1.derivedCommands.depth).toBeDefined();
+            expect(command2.derivedCommands.depth).toBeDefined();
+
+            expect(command1.derivedCommands.depth.depthOnlyCommand).toBeDefined();
+            expect(command2.derivedCommands.depth.depthOnlyCommand).toBeDefined();
+
+            expect(command1.derivedCommands.depth.depthOnlyCommand.shaderProgram).toEqual(command2.derivedCommands.depth.depthOnlyCommand.shaderProgram);
+            expect(command1.derivedCommands.depth.depthOnlyCommand.renderState).toEqual(command2.derivedCommands.depth.depthOnlyCommand.renderState);
+        });
+    });
+
+    it('pickPosition caches results per frame',function(){
+        if (!scene.pickPositionSupported) {
+            return;
+        }
+
+        var rectangle = Rectangle.fromDegrees(-100.0, 30.0, -90.0, 40.0);
+        scene.camera.setView({ destination : rectangle });
+
+        var canvas = scene.canvas;
+        var windowPosition = new Cartesian2(canvas.clientWidth / 2, canvas.clientHeight / 2);
+        spyOn(SceneTransforms, 'transformWindowToDrawingBuffer').and.callThrough();
+
+        expect(scene).toRenderAndCall(function() {
+            scene.pickPosition(windowPosition);
+            expect(SceneTransforms.transformWindowToDrawingBuffer).toHaveBeenCalled();
+
+            scene.pickPosition(windowPosition);
+            expect(SceneTransforms.transformWindowToDrawingBuffer.calls.count()).toEqual(1);
+
+            var rectanglePrimitive = createRectangle(rectangle);
+            rectanglePrimitive.appearance.material.uniforms.color = new Color(1.0, 0.0, 0.0, 1.0);
+
+            var primitives = scene.primitives;
+            primitives.add(rectanglePrimitive);
+        });
+
+        expect(scene).toRenderAndCall(function() {
+            scene.pickPosition(windowPosition);
+            expect(SceneTransforms.transformWindowToDrawingBuffer.calls.count()).toEqual(2);
+
+            scene.pickPosition(windowPosition);
+            expect(SceneTransforms.transformWindowToDrawingBuffer.calls.count()).toEqual(2);
+        });
     });
 
     it('pickPosition throws without windowPosition', function() {
@@ -873,4 +1119,138 @@ defineSuite([
         expect(s.maximumCubeMapSize).toBeGreaterThanOrEqualTo(16);
         s.destroyForSpecs();
     });
+
+    it('does not throw with debugShowCommands', function() {
+        var s = createScene();
+        if (s.context.drawBuffers) {
+            s.debugShowCommands = true;
+
+            var rectangle = Rectangle.fromDegrees(-100.0, 30.0, -90.0, 40.0);
+
+            var rectanglePrimitive = createRectangle(rectangle, 1000.0);
+            rectanglePrimitive.appearance.material.uniforms.color = new Color(1.0, 0.0, 0.0, 0.5);
+
+            var primitives = s.primitives;
+            primitives.add(rectanglePrimitive);
+
+            s.camera.setView({ destination : rectangle });
+
+            expect(function() {
+                s.renderForSpecs();
+            }).not.toThrowRuntimeError();
+        }
+        s.destroyForSpecs();
+    });
+
+    it('does not throw with debugShowFrustums', function() {
+        var s = createScene();
+        if (s.context.drawBuffers) {
+            s.debugShowFrustums = true;
+
+            var rectangle = Rectangle.fromDegrees(-100.0, 30.0, -90.0, 40.0);
+
+            var rectanglePrimitive = createRectangle(rectangle, 1000.0);
+            rectanglePrimitive.appearance.material.uniforms.color = new Color(1.0, 0.0, 0.0, 0.5);
+
+            var primitives = s.primitives;
+            primitives.add(rectanglePrimitive);
+
+            s.camera.setView({ destination : rectangle });
+
+            expect(function() {
+                s.renderForSpecs();
+            }).not.toThrowRuntimeError();
+        }
+        s.destroyForSpecs();
+    });
+
+    it('throws when minimumDisableDepthTestDistance is set less than 0.0', function() {
+        expect(function() {
+            scene.minimumDisableDepthTestDistance = -1.0;
+        }).toThrowDeveloperError();
+    });
+
+    it('converts to canvas coordinates',function(){
+        var mockPosition = new Cartesian3();
+        spyOn(SceneTransforms, 'wgs84ToWindowCoordinates');
+        scene.cartesianToCanvasCoordinates(mockPosition);
+
+        expect(SceneTransforms.wgs84ToWindowCoordinates).toHaveBeenCalledWith(scene, mockPosition, undefined);
+    });
+
+    it('converts to canvas coordinates and return it in a variable',function(){
+        var result = new Cartesian2();
+        var mockPosition = new Cartesian3();
+        spyOn(SceneTransforms, 'wgs84ToWindowCoordinates');
+        scene.cartesianToCanvasCoordinates(mockPosition, result);
+
+        expect(SceneTransforms.wgs84ToWindowCoordinates).toHaveBeenCalledWith(scene, mockPosition, result);
+    });
+
+    it('Gets imageryLayers', function() {
+        var scene = createScene();
+        var globe = scene.globe = new Globe(Ellipsoid.UNIT_SPHERE);
+        expect(scene.imageryLayers).toBe(globe.imageryLayers);
+
+        scene.globe = undefined;
+        expect(scene.imageryLayers).toBeUndefined();
+
+        scene.destroyForSpecs();
+    });
+
+    it('Gets terrainProvider', function() {
+        var scene = createScene();
+        var globe = scene.globe = new Globe(Ellipsoid.UNIT_SPHERE);
+        expect(scene.terrainProvider).toBe(globe.terrainProvider);
+
+        scene.globe = undefined;
+        expect(scene.terrainProvider).toBeUndefined();
+
+        scene.destroyForSpecs();
+    });
+
+    it('Sets terrainProvider', function() {
+        var scene = createScene();
+        var globe = scene.globe = new Globe(Ellipsoid.UNIT_SPHERE);
+        scene.terrainProvider = new CesiumTerrainProvider({
+            url: '//terrain/tiles'
+        });
+
+        expect(scene.terrainProvider).toBe(globe.terrainProvider);
+
+        scene.globe = undefined;
+        expect(function() {
+            scene.terrainProvider = new CesiumTerrainProvider({
+                url: '//newTerrain/tiles'
+            });
+        }).not.toThrow();
+
+        scene.destroyForSpecs();
+    });
+
+    it('Gets terrainProviderChanged', function() {
+        var scene = createScene();
+        var globe = scene.globe = new Globe(Ellipsoid.UNIT_SPHERE);
+        expect(scene.terrainProviderChanged).toBe(globe.terrainProviderChanged);
+
+        scene.globe = undefined;
+        expect(scene.terrainProviderChanged).toBeUndefined();
+
+        scene.destroyForSpecs();
+    });
+
+
+    it('Sets material', function() {
+        var scene = createScene();
+        var globe = scene.globe = new Globe(Ellipsoid.UNIT_SPHERE);
+        var material = Material.fromType('ElevationContour');
+        globe.material = material;
+        expect(globe.material).toBe(material);
+
+        globe.material = undefined;
+        expect(globe.material).toBeUndefined();
+
+        scene.destroyForSpecs();
+    });
+
 }, 'WebGL');

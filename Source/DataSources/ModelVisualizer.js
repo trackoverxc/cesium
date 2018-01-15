@@ -1,11 +1,12 @@
-/*global define*/
 define([
         '../Core/AssociativeArray',
         '../Core/BoundingSphere',
+        '../Core/Color',
         '../Core/defined',
         '../Core/destroyObject',
         '../Core/DeveloperError',
         '../Core/Matrix4',
+        '../Scene/ColorBlendMode',
         '../Scene/HeightReference',
         '../Scene/Model',
         '../Scene/ModelAnimationLoop',
@@ -15,10 +16,12 @@ define([
     ], function(
         AssociativeArray,
         BoundingSphere,
+        Color,
         defined,
         destroyObject,
         DeveloperError,
         Matrix4,
+        ColorBlendMode,
         HeightReference,
         Model,
         ModelAnimationLoop,
@@ -30,8 +33,14 @@ define([
     var defaultScale = 1.0;
     var defaultMinimumPixelSize = 0.0;
     var defaultIncrementallyLoadTextures = true;
+    var defaultClampAnimations = true;
     var defaultShadows = ShadowMode.ENABLED;
     var defaultHeightReference = HeightReference.NONE;
+    var defaultSilhouetteColor = Color.RED;
+    var defaultSilhouetteSize = 0.0;
+    var defaultColor = Color.WHITE;
+    var defaultColorBlendMode = ColorBlendMode.HIGHLIGHT;
+    var defaultColorBlendAmount = 0.5;
 
     var modelMatrixScratch = new Matrix4();
     var nodeMatrixScratch = new Matrix4();
@@ -92,7 +101,7 @@ define([
 
             var modelMatrix;
             if (show) {
-                modelMatrix = entity._getModelMatrix(time, modelMatrixScratch);
+                modelMatrix = entity.computeModelMatrix(time, modelMatrixScratch);
                 uri = Property.getValueOrUndefined(modelGraphics._uri, time);
                 show = defined(modelMatrix) && defined(uri);
             }
@@ -139,6 +148,13 @@ define([
             model.shadows = Property.getValueOrDefault(modelGraphics._shadows, time, defaultShadows);
             model.heightReference = Property.getValueOrDefault(modelGraphics._heightReference, time, defaultHeightReference);
             model.distanceDisplayCondition = Property.getValueOrUndefined(modelGraphics._distanceDisplayCondition, time);
+            model.silhouetteColor = Property.getValueOrDefault(modelGraphics._silhouetteColor, time, defaultSilhouetteColor, model._silhouetteColor);
+            model.silhouetteSize = Property.getValueOrDefault(modelGraphics._silhouetteSize, time, defaultSilhouetteSize);
+            model.color = Property.getValueOrDefault(modelGraphics._color, time, defaultColor, model._color);
+            model.colorBlendMode = Property.getValueOrDefault(modelGraphics._colorBlendMode, time, defaultColorBlendMode);
+            model.colorBlendAmount = Property.getValueOrDefault(modelGraphics._colorBlendAmount, time, defaultColorBlendAmount);
+            model.clippingPlanes = Property.getValueOrUndefined(modelGraphics._clippingPlanes, time);
+            model.clampAnimations = Property.getValueOrDefault(modelGraphics._clampAnimations, time, defaultClampAnimations);
 
             if (model.ready) {
                 var runAnimations = Property.getValueOrDefault(modelGraphics._runAnimations, time, true);

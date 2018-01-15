@@ -1,6 +1,6 @@
-/*global define*/
 define([
         '../Core/BoundingSphere',
+        '../Core/Check',
         '../Core/defaultValue',
         '../Core/defined',
         '../Core/defineProperties',
@@ -16,11 +16,11 @@ define([
         './CylinderGeometryUpdater',
         './EllipseGeometryUpdater',
         './EllipsoidGeometryUpdater',
-        './EntityCluster',
         './GeometryVisualizer',
         './LabelVisualizer',
         './ModelVisualizer',
         './PathVisualizer',
+        './PlaneGeometryUpdater',
         './PointVisualizer',
         './PolygonGeometryUpdater',
         './PolylineGeometryUpdater',
@@ -29,6 +29,7 @@ define([
         './WallGeometryUpdater'
     ], function(
         BoundingSphere,
+        Check,
         defaultValue,
         defined,
         defineProperties,
@@ -44,11 +45,11 @@ define([
         CylinderGeometryUpdater,
         EllipseGeometryUpdater,
         EllipsoidGeometryUpdater,
-        EntityCluster,
         GeometryVisualizer,
         LabelVisualizer,
         ModelVisualizer,
         PathVisualizer,
+        PlaneGeometryUpdater,
         PointVisualizer,
         PolygonGeometryUpdater,
         PolylineGeometryUpdater,
@@ -71,17 +72,11 @@ define([
      */
     function DataSourceDisplay(options) {
         //>>includeStart('debug', pragmas.debug);
-        if (!defined(options)) {
-            throw new DeveloperError('options is required.');
-        }
-        if (!defined(options.scene)) {
-            throw new DeveloperError('scene is required.');
-        }
-        if (!defined(options.dataSourceCollection)) {
-            throw new DeveloperError('dataSourceCollection is required.');
-        }
+        Check.typeOf.object('options', options);
+        Check.typeOf.object('options.scene', options.scene);
+        Check.typeOf.object('options.dataSourceCollection', options.dataSourceCollection);
         //>>includeEnd('debug');
-        
+
         GroundPrimitive.initializeTerrainHeights();
 
         var scene = options.scene;
@@ -121,6 +116,7 @@ define([
                 new GeometryVisualizer(CorridorGeometryUpdater, scene, entities),
                 new GeometryVisualizer(EllipseGeometryUpdater, scene, entities),
                 new GeometryVisualizer(EllipsoidGeometryUpdater, scene, entities),
+                new GeometryVisualizer(PlaneGeometryUpdater, scene, entities),
                 new GeometryVisualizer(PolygonGeometryUpdater, scene, entities),
                 new GeometryVisualizer(PolylineGeometryUpdater, scene, entities),
                 new GeometryVisualizer(PolylineVolumeGeometryUpdater, scene, entities),
@@ -241,7 +237,7 @@ define([
             this._ready = false;
             return false;
         }
-        
+
         var result = true;
 
         var i;
@@ -366,19 +362,7 @@ define([
 
         scene.primitives.add(entityCluster);
 
-        var visualizers = this._visualizersCallback(scene, entityCluster, dataSource);
-        dataSource._visualizers = visualizers;
-
-        var length = visualizers.length;
-        for (var i = 0; i < length; ++i) {
-            var visualizer = visualizers[i];
-            var cluster = visualizer._cluster;
-
-            if (defined(cluster) && !defined(cluster._scene)) {
-                cluster._initialize(scene);
-                scene.primitives.add(cluster);
-            }
-        }
+        dataSource._visualizers = this._visualizersCallback(scene, entityCluster, dataSource);
     };
 
     DataSourceDisplay.prototype._onDataSourceRemoved = function(dataSourceCollection, dataSource) {
@@ -389,11 +373,6 @@ define([
         var visualizers = dataSource._visualizers;
         var length = visualizers.length;
         for (var i = 0; i < length; i++) {
-            var cluster = visualizers[i]._cluster;
-            if (cluster !== entityCluster) {
-                scene.primitives.remove(cluster);
-            }
-
             visualizers[i].destroy();
         }
 

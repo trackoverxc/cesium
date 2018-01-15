@@ -1,4 +1,3 @@
-/*global defineSuite*/
 defineSuite([
         'DataSources/PolygonGeometryUpdater',
         'Core/Cartesian3',
@@ -251,6 +250,15 @@ defineSuite([
         entity.polygon.perPositionHeight = new SampledProperty(Number);
         entity.polygon.perPositionHeight.addSample(time, 1);
         expect(updater.isDynamic).toBe(true);
+    });
+
+    it('A time-varying color causes ground geometry to be dynamic', function() {
+        var entity = createBasicPolygonWithoutHeight();
+        var updater = new PolygonGeometryUpdater(entity, scene);
+        var color = new SampledProperty(Color);
+        color.addSample(time, Color.WHITE);
+        entity.polygon.material = new ColorMaterialProperty(color);
+        expect(updater.isDynamic).toBe(groundPrimitiveSupported);
     });
 
     function validateGeometryInstance(options) {

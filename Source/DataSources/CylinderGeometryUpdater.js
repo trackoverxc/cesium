@@ -1,6 +1,4 @@
-/*global define*/
 define([
-        '../Core/Cartesian3',
         '../Core/Color',
         '../Core/ColorGeometryInstanceAttribute',
         '../Core/CylinderGeometry',
@@ -26,7 +24,6 @@ define([
         './MaterialProperty',
         './Property'
     ], function(
-        Cartesian3,
         Color,
         ColorGeometryInstanceAttribute,
         CylinderGeometry,
@@ -238,7 +235,7 @@ define([
          * Gets the property specifying whether the geometry
          * casts or receives shadows from each light source.
          * @memberof CylinderGeometryUpdater.prototype
-         * 
+         *
          * @type {Property}
          * @readonly
          */
@@ -370,7 +367,7 @@ define([
         return new GeometryInstance({
             id : entity,
             geometry : new CylinderGeometry(this._options),
-            modelMatrix : entity._getModelMatrix(Iso8601.MINIMUM_VALUE),
+            modelMatrix : entity.computeModelMatrix(Iso8601.MINIMUM_VALUE),
             attributes : attributes
         });
     };
@@ -402,7 +399,7 @@ define([
         return new GeometryInstance({
             id : entity,
             geometry : new CylinderOutlineGeometry(this._options),
-            modelMatrix : entity._getModelMatrix(Iso8601.MINIMUM_VALUE),
+            modelMatrix : entity.computeModelMatrix(Iso8601.MINIMUM_VALUE),
             attributes : {
                 show : new ShowGeometryInstanceAttribute(isAvailable && entity.isShowing && this._showProperty.getValue(time) && this._showOutlineProperty.getValue(time)),
                 color : ColorGeometryInstanceAttribute.fromColor(outlineColor),
@@ -576,7 +573,7 @@ define([
         }
 
         var options = this._options;
-        var modelMatrix = entity._getModelMatrix(time);
+        var modelMatrix = entity.computeModelMatrix(time);
         var length = Property.getValueOrUndefined(cylinder.length, time);
         var topRadius = Property.getValueOrUndefined(cylinder.topRadius, time);
         var bottomRadius = Property.getValueOrUndefined(cylinder.bottomRadius, time);
@@ -595,7 +592,7 @@ define([
         var distanceDisplayConditionProperty = this._geometryUpdater.distanceDisplayConditionProperty;
         var distanceDisplayCondition = distanceDisplayConditionProperty.getValue(time);
         var distanceDisplayConditionAttribute = DistanceDisplayConditionGeometryInstanceAttribute.fromDistanceDisplayCondition(distanceDisplayCondition);
-        
+
         if (Property.getValueOrDefault(cylinder.fill, time, true)) {
             var material = MaterialProperty.getValue(time, geometryUpdater.fillMaterialProperty, this._material);
             this._material = material;

@@ -1,23 +1,16 @@
-/*global defineSuite*/
 defineSuite([
         'Scene/Globe',
         'Core/CesiumTerrainProvider',
-        'Core/defined',
-        'Core/Ellipsoid',
         'Core/loadWithXhr',
         'Core/Rectangle',
-        'Renderer/ClearCommand',
         'Scene/SingleTileImageryProvider',
         'Specs/createScene',
         'Specs/pollToPromise'
     ], function(
         Globe,
         CesiumTerrainProvider,
-        defined,
-        Ellipsoid,
         loadWithXhr,
         Rectangle,
-        ClearCommand,
         SingleTileImageryProvider,
         createScene,
         pollToPromise) {
@@ -68,7 +61,7 @@ defineSuite([
         return pollToPromise(function() {
             globe._surface._debug.enableDebugOutput = true;
             scene.render();
-            return globe._surface.tileProvider.ready && !defined(globe._surface._tileLoadQueue.head) && globe._surface._debug.tilesWaitingForChildren === 0;
+            return globe._surface.tileProvider.ready && globe._surface._tileLoadQueueHigh.length === 0 && globe._surface._tileLoadQueueMedium.length === 0 && globe._surface._tileLoadQueueLow.length === 0 && globe._surface._debug.tilesWaitingForChildren === 0;
         });
     }
 
@@ -83,9 +76,9 @@ defineSuite([
 
         return updateUntilDone(globe).then(function() {
             scene.globe.show = false;
-            expect(scene.renderForSpecs()).toEqual([0, 0, 0, 255]);
+            expect(scene).toRender([0, 0, 0, 255]);
             scene.globe.show = true;
-            expect(scene.renderForSpecs()).not.toEqual([0, 0, 0, 255]);
+            expect(scene).notToRender([0, 0, 0, 255]);
         });
     });
 
@@ -100,9 +93,9 @@ defineSuite([
 
         return updateUntilDone(globe).then(function() {
             scene.globe.show = false;
-            expect(scene.renderForSpecs()).toEqual([0, 0, 0, 255]);
+            expect(scene).toRender([0, 0, 0, 255]);
             scene.globe.show = true;
-            expect(scene.renderForSpecs()).not.toEqual([0, 0, 0, 255]);
+            expect(scene).notToRender([0, 0, 0, 255]);
         });
     });
 
@@ -147,9 +140,9 @@ defineSuite([
 
             return updateUntilDone(globe).then(function() {
                 scene.globe.show = false;
-                expect(scene.renderForSpecs()).toEqual([0, 0, 0, 255]);
+                expect(scene).toRender([0, 0, 0, 255]);
                 scene.globe.show = true;
-                expect(scene.renderForSpecs()).not.toEqual([0, 0, 0, 255]);
+                expect(scene).notToRender([0, 0, 0, 255]);
             });
         });
     });

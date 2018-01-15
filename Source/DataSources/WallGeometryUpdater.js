@@ -1,4 +1,3 @@
-/*global define*/
 define([
         '../Core/Color',
         '../Core/ColorGeometryInstanceAttribute',
@@ -361,7 +360,7 @@ define([
         } else {
             attributes = {
                 show : show,
-                distanceDisplayCondition : distanceDisplayConditionAttribute,
+                distanceDisplayCondition : distanceDisplayConditionAttribute
             };
         }
 

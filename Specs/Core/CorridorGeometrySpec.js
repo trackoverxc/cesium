@@ -1,4 +1,3 @@
-/*global defineSuite*/
 defineSuite([
         'Core/CorridorGeometry',
         'Core/Cartesian3',
@@ -42,6 +41,13 @@ defineSuite([
             width: 10000
         }));
         expect(geometry).toBeUndefined();
+
+        geometry = CorridorGeometry.createGeometry(new CorridorGeometry({
+            positions :  [new Cartesian3(-1349511.388149118, -5063973.22857992, 3623141.6372688496), //same lon/lat, different height
+                          new Cartesian3(-1349046.4811926484, -5062228.688739784, 3621885.0521561056)],
+            width: 10000
+        }));
+        expect(geometry).toBeUndefined();
     });
 
     it('computes positions', function() {
@@ -78,7 +84,7 @@ defineSuite([
         expect(m.attributes.st.values.length).toEqual(numVertices * 2);
         expect(m.attributes.normal.values.length).toEqual(numVertices * 3);
         expect(m.attributes.tangent.values.length).toEqual(numVertices * 3);
-        expect(m.attributes.binormal.values.length).toEqual(numVertices * 3);
+        expect(m.attributes.bitangent.values.length).toEqual(numVertices * 3);
         expect(m.indices.length).toEqual(numTriangles * 3);
     });
 
@@ -118,7 +124,7 @@ defineSuite([
         expect(m.attributes.st.values.length).toEqual(numVertices * 2);
         expect(m.attributes.normal.values.length).toEqual(numVertices * 3);
         expect(m.attributes.tangent.values.length).toEqual(numVertices * 3);
-        expect(m.attributes.binormal.values.length).toEqual(numVertices * 3);
+        expect(m.attributes.bitangent.values.length).toEqual(numVertices * 3);
         expect(m.indices.length).toEqual(numTriangles * 3);
     });
 
@@ -291,6 +297,6 @@ defineSuite([
     packedInstance.push(Ellipsoid.WGS84.radii.x, Ellipsoid.WGS84.radii.y, Ellipsoid.WGS84.radii.z);
     packedInstance.push(1.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     packedInstance.push(rectangle.west, rectangle.south, rectangle.east, rectangle.north);
-    packedInstance.push(30000.0, 0.0, 0.0, 2.0, 0.1);
+    packedInstance.push(30000.0, 0.0, 0.0, 2.0, 0.1, 0.0);
     createPackableSpecs(CorridorGeometry, corridor, packedInstance);
 });

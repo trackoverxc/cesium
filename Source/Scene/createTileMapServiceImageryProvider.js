@@ -1,13 +1,9 @@
-/*global define*/
 define([
         '../Core/Cartesian2',
         '../Core/Cartographic',
-        '../Core/Credit',
         '../Core/defaultValue',
         '../Core/defined',
-        '../Core/defineProperties',
         '../Core/DeveloperError',
-        '../Core/Event',
         '../Core/GeographicTilingScheme',
         '../Core/joinUrls',
         '../Core/loadXML',
@@ -20,12 +16,9 @@ define([
     ], function(
         Cartesian2,
         Cartographic,
-        Credit,
         defaultValue,
         defined,
-        defineProperties,
         DeveloperError,
-        Event,
         GeographicTilingScheme,
         joinUrls,
         loadXML,
@@ -67,7 +60,7 @@ define([
      *
      * @see ArcGisMapServerImageryProvider
      * @see BingMapsImageryProvider
-     * @see GoogleEarthImageryProvider
+     * @see GoogleEarthEnterpriseMapsProvider
      * @see createOpenStreetMapImageryProvider
      * @see SingleTileImageryProvider
      * @see WebMapServiceImageryProvider
@@ -111,8 +104,7 @@ define([
             var tileSetRegex = /tileset/i;
             var tileSetsRegex = /tilesets/i;
             var bboxRegex = /boundingbox/i;
-            var srsRegex = /srs/i;
-            var format, bbox, tilesets, srs;
+            var format, bbox, tilesets;
             var tilesetsList = []; //list of TileSets
 
             // Allowing options properties (already copied to that) to override XML values
@@ -134,9 +126,17 @@ define([
                     }
                 } else if (bboxRegex.test(nodeList.item(i).nodeName)) {
                     bbox = nodeList.item(i);
-                } else if (srsRegex.test(nodeList.item(i).nodeName)) {
-                    srs = nodeList.item(i).textContent;
                 }
+            }
+
+            var message;
+            if (!defined(tilesets) || !defined(bbox)) {
+                message = 'Unable to find expected tilesets or bbox attributes in ' + joinUrls(url, 'tilemapresource.xml') + '.';
+                metadataError = TileProviderError.handleError(metadataError, imageryProvider, imageryProvider.errorEvent, message, undefined, undefined, undefined, requestMetadata);
+                if(!metadataError.retry) {
+                    deferred.reject(new RuntimeError(message));
+                }
+                return;
             }
 
             var fileExtension = defaultValue(options.fileExtension, format.getAttribute('extension'));
@@ -153,7 +153,7 @@ define([
                 } else if (tilingSchemeName === 'mercator' || tilingSchemeName === 'global-mercator') {
                     tilingScheme = new WebMercatorTilingScheme({ ellipsoid : options.ellipsoid });
                 } else {
-                    var message = joinUrls(url, 'tilemapresource.xml') + 'specifies an unsupported profile attribute, ' + tilingSchemeName + '.';
+                    message = joinUrls(url, 'tilemapresource.xml') + 'specifies an unsupported profile attribute, ' + tilingSchemeName + '.';
                     metadataError = TileProviderError.handleError(metadataError, imageryProvider, imageryProvider.errorEvent, message, undefined, undefined, undefined, requestMetadata);
                     if(!metadataError.retry) {
                         deferred.reject(new RuntimeError(message));

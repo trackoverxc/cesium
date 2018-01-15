@@ -1,4 +1,3 @@
-/*global define*/
 define([
         '../Core/Cartesian2',
         '../Core/clone',
@@ -11,7 +10,9 @@ define([
         '../Core/destroyObject',
         '../Core/DeveloperError',
         '../Core/isArray',
+        '../Core/loadCRN',
         '../Core/loadImage',
+        '../Core/loadKTX',
         '../Core/Matrix2',
         '../Core/Matrix3',
         '../Core/Matrix4',
@@ -20,13 +21,17 @@ define([
         '../Shaders/Materials/BumpMapMaterial',
         '../Shaders/Materials/CheckerboardMaterial',
         '../Shaders/Materials/DotMaterial',
+        '../Shaders/Materials/ElevationContourMaterial',
+        '../Shaders/Materials/ElevationRampMaterial',
         '../Shaders/Materials/FadeMaterial',
         '../Shaders/Materials/GridMaterial',
         '../Shaders/Materials/NormalMapMaterial',
         '../Shaders/Materials/PolylineArrowMaterial',
+        '../Shaders/Materials/PolylineDashMaterial',
         '../Shaders/Materials/PolylineGlowMaterial',
         '../Shaders/Materials/PolylineOutlineMaterial',
         '../Shaders/Materials/RimLightingMaterial',
+        '../Shaders/Materials/SlopeRampMaterial',
         '../Shaders/Materials/StripeMaterial',
         '../Shaders/Materials/Water',
         '../ThirdParty/when'
@@ -42,7 +47,9 @@ define([
         destroyObject,
         DeveloperError,
         isArray,
+        loadCRN,
         loadImage,
+        loadKTX,
         Matrix2,
         Matrix3,
         Matrix4,
@@ -51,13 +58,17 @@ define([
         BumpMapMaterial,
         CheckerboardMaterial,
         DotMaterial,
+        ElevationContourMaterial,
+        ElevationRampMaterial,
         FadeMaterial,
         GridMaterial,
         NormalMapMaterial,
         PolylineArrowMaterial,
+        PolylineDashMaterial,
         PolylineGlowMaterial,
         PolylineOutlineMaterial,
         RimLightingMaterial,
+        SlopeRampMaterial,
         StripeMaterial,
         WaterMaterial,
         when) {
@@ -203,6 +214,13 @@ define([
      *  <ul>
      *      <li><code>color</code>: diffuse color and alpha.</li>
      *  </ul>
+     *  <li>PolylineDash</li>
+     *  <ul>
+     *      <li><code>color</code>: color for the line.</li>
+     *      <li><code>gapColor</code>: color for the gaps in the line.</li>
+     *      <li><code>dashLength</code>: Dash length in pixels.</li>
+     *      <li><code>dashPattern</code>: The 16 bit stipple pattern for the line..</li>
+     *  </ul>
      *  <li>PolylineGlow</li>
      *  <ul>
      *      <li><code>color</code>: color and maximum alpha for the glow on the line.</li>
@@ -214,6 +232,23 @@ define([
      *      <li><code>outlineColor</code>: diffuse color and alpha for the outline.</li>
      *      <li><code>outlineWidth</code>: width of the outline in pixels.</li>
      *  </ul>
+     *  <li>ElevationContour</li>
+     *  <ul>
+     *      <li><code>color</code>: color and alpha for the contour line.</li>
+     *      <li><code>spacing</code>: spacing for contour lines in meters.</li>
+     *      <li><code>width</code>: Number specifying the width of the grid lines in pixels.</li>
+     *  </ul>
+     *  <li>ElevationRamp</li>
+     *  <ul>
+     *      <li><code>image</code>: color ramp image to use for coloring the terrain.</li>
+     *      <li><code>minimumHeight</code>: minimum height for the ramp.</li>
+     *      <li><code>maximumHeight</code>: maximum height for the ramp.</li>
+     *  </ul>
+     *  <li>SlopeRamp</li>
+     *  <ul>
+     *      <li><code>image</code>: color ramp image to use for coloring the terrain.</li>
+     *  </ul>
+     * </ul>
      * </ul>
      * </div>
      *
@@ -238,7 +273,7 @@ define([
      *
      * @see {@link https://github.com/AnalyticalGraphicsInc/cesium/wiki/Fabric|Fabric wiki page} for a more detailed options of Fabric.
      *
-     * @demo {@link http://cesiumjs.org/Cesium/Apps/Sandcastle/index.html?src=Materials.html|Cesium Sandcastle Materials Demo}
+     * @demo {@link https://cesiumjs.org/Cesium/Apps/Sandcastle/index.html?src=Materials.html|Cesium Sandcastle Materials Demo}
      *
      * @example
      * // Create a color material with fromType:
@@ -413,10 +448,23 @@ define([
             uniformId = loadedImage.id;
             var image = loadedImage.image;
 
-            var texture = new Texture({
-                context : context,
-                source : image
-            });
+            var texture;
+            if (defined(image.internalFormat)) {
+                texture = new Texture({
+                    context : context,
+                    pixelFormat : image.internalFormat,
+                    width : image.width,
+                    height : image.height,
+                    source : {
+                        arrayBufferView : image.bufferView
+                    }
+                });
+            } else {
+                texture = new Texture({
+                    context : context,
+                    source : image
+                });
+            }
 
             this._textures[uniformId] = texture;
 
@@ -590,17 +638,21 @@ define([
     }
 
     function invalidNameError(property, properties) {
+        //>>includeStart('debug', pragmas.debug);
         var errorString = 'fabric: property name \'' + property + '\' is not valid. It should be ';
         for ( var i = 0; i < properties.length; i++) {
             var propertyName = '\'' + properties[i] + '\'';
             errorString += (i === properties.length - 1) ? ('or ' + propertyName + '.') : (propertyName + ', ');
         }
         throw new DeveloperError(errorString);
+        //>>includeEnd('debug');
     }
 
     function duplicateNameError(property, properties) {
+        //>>includeStart('debug', pragmas.debug);
         var errorString = 'fabric: uniforms and materials cannot share the same property \'' + property + '\'';
         throw new DeveloperError(errorString);
+        //>>includeEnd('debug');
     }
 
     var templateProperties = ['type', 'materials', 'uniforms', 'components', 'source'];
@@ -613,9 +665,11 @@ define([
         var components = template.components;
 
         // Make sure source and components do not exist in the same template.
+        //>>includeStart('debug', pragmas.debug);
         if (defined(components) && defined(template.source)) {
             throw new DeveloperError('fabric: cannot have source and components in the same template.');
         }
+        //>>includeEnd('debug');
 
         // Make sure all template and components properties are valid.
         checkForValidProperties(template, templateProperties, invalidNameError, true);
@@ -656,6 +710,9 @@ define([
         'mat3' : Matrix3,
         'mat4' : Matrix4
     };
+
+    var ktxRegex = /\.ktx$/i;
+    var crnRegex = /\.crn$/i;
 
     function createTexture2DUpdateFunction(uniformId) {
         var oldUniformValue;
@@ -735,7 +792,15 @@ define([
 
             if (uniformValue !== material._texturePaths[uniformId]) {
                 if (typeof uniformValue === 'string') {
-                    when(loadImage(uniformValue), function(image) {
+                    var promise;
+                    if (ktxRegex.test(uniformValue)) {
+                        promise = loadKTX(uniformValue);
+                    } else if (crnRegex.test(uniformValue)) {
+                        promise = loadCRN(uniformValue);
+                    } else {
+                        promise = loadImage(uniformValue);
+                    }
+                    when(promise, function(image) {
                         material._loadedImages.push({
                             id : uniformId,
                             image : image
@@ -820,12 +885,20 @@ define([
         var uniformValue = materialUniforms[uniformId];
         var uniformType = getUniformType(uniformValue);
 
+        //>>includeStart('debug', pragmas.debug);
         if (!defined(uniformType)) {
             throw new DeveloperError('fabric: uniform \'' + uniformId + '\' has invalid type.');
-        } else if (uniformType === 'channels') {
-            if (replaceToken(material, uniformId, uniformValue, false) === 0 && strict) {
+        }
+        //>>includeEnd('debug');
+
+        var replacedTokenCount;
+        if (uniformType === 'channels') {
+            replacedTokenCount = replaceToken(material, uniformId, uniformValue, false);
+            //>>includeStart('debug', pragmas.debug);
+            if (replacedTokenCount === 0 && strict) {
                 throw new DeveloperError('strict: shader source does not use channels \'' + uniformId + '\'.');
             }
+            //>>includeEnd('debug');
         } else {
             // Since webgl doesn't allow texture dimension queries in glsl, create a uniform to do it.
             // Check if the shader source actually uses texture dimensions before creating the uniform.
@@ -849,9 +922,13 @@ define([
             }
 
             var newUniformId = uniformId + '_' + material._count++;
-            if (replaceToken(material, uniformId, newUniformId) === 1 && strict) {
+            replacedTokenCount = replaceToken(material, uniformId, newUniformId);
+            //>>includeStart('debug', pragmas.debug);
+            if (replacedTokenCount === 1 && strict) {
                 throw new DeveloperError('strict: shader source does not use uniform \'' + uniformId + '\'.');
             }
+            //>>includeEnd('debug');
+
             // Set uniform value
             material.uniforms[uniformId] = uniformValue;
 
@@ -944,9 +1021,12 @@ define([
 
                 // Replace each material id with an czm_getMaterial method call.
                 var materialMethodCall = newMethodName + '(materialInput)';
-                if (replaceToken(material, subMaterialId, materialMethodCall) === 0 && strict) {
+                var tokensReplacedCount = replaceToken(material, subMaterialId, materialMethodCall);
+                //>>includeStart('debug', pragmas.debug);
+                if (tokensReplacedCount === 0 && strict) {
                     throw new DeveloperError('strict: shader source does not use material \'' + subMaterialId + '\'.');
                 }
+                //>>includeEnd('debug');
             }
         }
     }
@@ -1210,7 +1290,7 @@ define([
         },
         translucent : function(material) {
             var uniforms = material.uniforms;
-            return (uniforms.evenColor.alpha < 1.0) || (uniforms.oddColor.alpha < 0.0);
+            return (uniforms.evenColor.alpha < 1.0) || (uniforms.oddColor.alpha < 1.0);
         }
     });
 
@@ -1232,7 +1312,7 @@ define([
         },
         translucent : function(material) {
             var uniforms = material.uniforms;
-            return (uniforms.lightColor.alpha < 1.0) || (uniforms.darkColor.alpha < 0.0);
+            return (uniforms.lightColor.alpha < 1.0) || (uniforms.darkColor.alpha < 1.0);
         }
     });
 
@@ -1254,7 +1334,7 @@ define([
         },
         translucent : function(material) {
             var uniforms = material.uniforms;
-            return (uniforms.lightColor.alpha < 1.0) || (uniforms.darkColor.alpha < 0.0);
+            return (uniforms.lightColor.alpha < 1.0) || (uniforms.darkColor.alpha < 1.0);
         }
     });
 
@@ -1282,7 +1362,7 @@ define([
         },
         translucent : function(material) {
             var uniforms = material.uniforms;
-            return (uniforms.baseWaterColor.alpha < 1.0) || (uniforms.blendColor.alpha < 0.0);
+            return (uniforms.baseWaterColor.alpha < 1.0) || (uniforms.blendColor.alpha < 1.0);
         }
     });
 
@@ -1304,7 +1384,7 @@ define([
         },
         translucent : function(material) {
             var uniforms = material.uniforms;
-            return (uniforms.color.alpha < 1.0) || (uniforms.rimColor.alpha < 0.0);
+            return (uniforms.color.alpha < 1.0) || (uniforms.rimColor.alpha < 1.0);
         }
     });
 
@@ -1332,7 +1412,7 @@ define([
         },
         translucent : function(material) {
             var uniforms = material.uniforms;
-            return (uniforms.fadeInColor.alpha < 1.0) || (uniforms.fadeOutColor.alpha < 0.0);
+            return (uniforms.fadeInColor.alpha < 1.0) || (uniforms.fadeOutColor.alpha < 1.0);
         }
     });
 
@@ -1349,6 +1429,26 @@ define([
                 color : new Color(1.0, 1.0, 1.0, 1.0)
             },
             source : PolylineArrowMaterial
+        },
+        translucent : true
+    });
+
+     /**
+     * Gets the name of the polyline glow material.
+     * @type {String}
+     * @readonly
+     */
+    Material.PolylineDashType = 'PolylineDash';
+    Material._materialCache.addMaterial(Material.PolylineDashType, {
+        fabric : {
+            type : Material.PolylineDashType,
+            uniforms : {
+                color : new Color(1.0, 0.0, 1.0, 1.0),
+                gapColor : new Color(0.0, 0.0, 0.0, 0.0),
+                dashLength : 16.0,
+                dashPattern : 255.0
+            },
+            source : PolylineDashMaterial
         },
         translucent : true
     });
@@ -1391,6 +1491,61 @@ define([
             var uniforms = material.uniforms;
             return (uniforms.color.alpha < 1.0) || (uniforms.outlineColor.alpha < 1.0);
         }
+    });
+
+    /**
+     * Gets the name of the elevation contour material.
+     * @type {String}
+     * @readonly
+     */
+    Material.ElevationContourType = 'ElevationContour';
+    Material._materialCache.addMaterial(Material.ElevationContourType, {
+        fabric : {
+            type : Material.ElevationContourType,
+            uniforms : {
+                spacing: 100.0,
+                color: new Color(1.0, 0.0, 0.0, 1.0),
+                width: 1.0
+            },
+            source : ElevationContourMaterial
+        },
+        translucent : false
+    });
+
+    /**
+     * Gets the name of the elevation contour material.
+     * @type {String}
+     * @readonly
+     */
+    Material.ElevationRampType = 'ElevationRamp';
+    Material._materialCache.addMaterial(Material.ElevationRampType, {
+        fabric : {
+            type : Material.ElevationRampType,
+            uniforms : {
+                image: Material.DefaultImageId,
+                minimumHeight: 0.0,
+                maximumHeight: 10000.0
+            },
+            source : ElevationRampMaterial
+        },
+        translucent : false
+    });
+
+    /**
+     * Gets the name of the slope ramp material.
+     * @type {String}
+     * @readonly
+     */
+    Material.SlopeRampMaterialType = 'SlopeRamp';
+    Material._materialCache.addMaterial(Material.SlopeRampMaterialType, {
+        fabric : {
+            type : Material.SlopeRampMaterialType,
+            uniforms : {
+                image: Material.DefaultImageId
+            },
+            source : SlopeRampMaterial
+        },
+        translucent : false
     });
 
     return Material;

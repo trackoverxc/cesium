@@ -1,8 +1,6 @@
-/*global defineSuite*/
 defineSuite([
         'Scene/DiscardMissingTileImagePolicy',
         'Core/Cartesian2',
-        'Core/defined',
         'Core/loadImage',
         'Core/loadWithXhr',
         'Specs/pollToPromise',
@@ -10,7 +8,6 @@ defineSuite([
     ], function(
         DiscardMissingTileImagePolicy,
         Cartesian2,
-        defined,
         loadImage,
         loadWithXhr,
         pollToPromise,

@@ -1,64 +1,41 @@
-/*global defineSuite*/
 defineSuite([
         'Scene/GroundPrimitive',
-        'Core/Cartesian3',
         'Core/Color',
         'Core/ColorGeometryInstanceAttribute',
-        'Core/ComponentDatatype',
         'Core/destroyObject',
         'Core/DistanceDisplayConditionGeometryInstanceAttribute',
         'Core/Ellipsoid',
-        'Core/Geometry',
-        'Core/GeometryAttribute',
         'Core/GeometryInstance',
-        'Core/GeometryInstanceAttribute',
         'Core/HeadingPitchRange',
         'Core/Math',
         'Core/PolygonGeometry',
-        'Core/PrimitiveType',
         'Core/Rectangle',
         'Core/RectangleGeometry',
-        'Core/RuntimeError',
         'Core/ShowGeometryInstanceAttribute',
-        'Core/Transforms',
-        'Scene/MaterialAppearance',
-        'Scene/OrthographicFrustum',
-        'Scene/Pass',
+        'Renderer/Pass',
+        'Scene/InvertClassification',
         'Scene/PerInstanceColorAppearance',
         'Scene/Primitive',
-        'Scene/SceneMode',
-        'Specs/BadGeometry',
         'Specs/createScene',
         'Specs/pollToPromise'
     ], function(
         GroundPrimitive,
-        Cartesian3,
         Color,
         ColorGeometryInstanceAttribute,
-        ComponentDatatype,
         destroyObject,
         DistanceDisplayConditionGeometryInstanceAttribute,
         Ellipsoid,
-        Geometry,
-        GeometryAttribute,
         GeometryInstance,
-        GeometryInstanceAttribute,
         HeadingPitchRange,
         CesiumMath,
         PolygonGeometry,
-        PrimitiveType,
         Rectangle,
         RectangleGeometry,
-        RuntimeError,
         ShowGeometryInstanceAttribute,
-        Transforms,
-        MaterialAppearance,
-        OrthographicFrustum,
         Pass,
+        InvertClassification,
         PerInstanceColorAppearance,
         Primitive,
-        SceneMode,
-        BadGeometry,
         createScene,
         pollToPromise) {
     'use strict';
@@ -97,7 +74,9 @@ defineSuite([
 
     function MockGlobePrimitive(primitive) {
         this._primitive = primitive;
+        this.pass = Pass.GLOBE;
     }
+
     MockGlobePrimitive.prototype.update = function(frameState) {
         var commandList = frameState.commandList;
         var startLength = commandList.length;
@@ -105,7 +84,7 @@ defineSuite([
 
         for (var i = startLength; i < commandList.length; ++i) {
             var command = commandList[i];
-            command.pass = Pass.GLOBE;
+            command.pass = this.pass;
         }
     };
 
@@ -177,6 +156,7 @@ defineSuite([
         expect(primitive.allowPicking).toEqual(true);
         expect(primitive.asynchronous).toEqual(true);
         expect(primitive.debugShowBoundingVolume).toEqual(false);
+        expect(primitive.debugShowShadowVolume).toEqual(false);
     });
 
     it('constructs with options', function() {
@@ -191,7 +171,8 @@ defineSuite([
             releaseGeometryInstances : false,
             allowPicking : false,
             asynchronous : false,
-            debugShowBoundingVolume : true
+            debugShowBoundingVolume : true,
+            debugShowShadowVolume : true
         });
 
         expect(primitive.geometryInstances).toEqual(geometryInstances);
@@ -203,6 +184,7 @@ defineSuite([
         expect(primitive.allowPicking).toEqual(false);
         expect(primitive.asynchronous).toEqual(false);
         expect(primitive.debugShowBoundingVolume).toEqual(true);
+        expect(primitive.debugShowShadowVolume).toEqual(true);
     });
 
     it('releases geometry instances when releaseGeometryInstances is true', function() {
@@ -325,13 +307,13 @@ defineSuite([
         scene.camera.setView({ destination : rectangle });
 
         scene.groundPrimitives.add(depthPrimitive);
-        var pixels = scene.renderForSpecs();
-        expect(pixels).not.toEqual([0, 0, 0, 255]);
-        expect(pixels[0]).toEqual(0);
+        expect(scene).toRenderAndCall(function(rgba) {
+            expect(rgba).not.toEqual([0, 0, 0, 255]);
+            expect(rgba[0]).toEqual(0);
+        });
 
         scene.groundPrimitives.add(primitive);
-        pixels = scene.renderForSpecs();
-        expect(pixels).toEqual(color);
+        expect(scene).toRender(color);
     }
 
     it('renders in 3D', function() {
@@ -409,6 +391,82 @@ defineSuite([
         verifyGroundPrimitiveRender(primitive, rectColorAttribute.value);
     });
 
+    it('renders with invert classification and an opaque color', function() {
+        if (!GroundPrimitive.isSupported(scene)) {
+            return;
+        }
+
+        scene.invertClassification = true;
+        scene.invertClassificationColor = new Color(0.25, 0.25, 0.25, 1.0);
+
+        depthPrimitive.pass = Pass.CESIUM_3D_TILE;
+        rectangleInstance.attributes.show = new ShowGeometryInstanceAttribute(true);
+
+        primitive = new GroundPrimitive({
+            geometryInstances : rectangleInstance,
+            asynchronous : false
+        });
+
+        scene.camera.setView({ destination : rectangle });
+
+        var invertedColor = new Array(4);
+        invertedColor[0] = Color.floatToByte(Color.byteToFloat(depthColor[0]) * scene.invertClassificationColor.red);
+        invertedColor[1] = Color.floatToByte(Color.byteToFloat(depthColor[1]) * scene.invertClassificationColor.green);
+        invertedColor[2] = Color.floatToByte(Color.byteToFloat(depthColor[2]) * scene.invertClassificationColor.blue);
+        invertedColor[3] = 255;
+
+        scene.groundPrimitives.add(depthPrimitive);
+        expect(scene).toRender(invertedColor);
+
+        scene.groundPrimitives.add(primitive);
+        expect(scene).toRender(rectColor);
+
+        primitive.getGeometryInstanceAttributes('rectangle').show = [0];
+        expect(scene).toRender(depthColor);
+
+        scene.invertClassification = false;
+    });
+
+    it('renders with invert classification and a translucent color', function() {
+        if (!GroundPrimitive.isSupported(scene)) {
+            return;
+        }
+
+        if (!InvertClassification.isTranslucencySupported(scene.context)) {
+            return;
+        }
+
+        scene.invertClassification = true;
+        scene.invertClassificationColor = new Color(0.25, 0.25, 0.25, 0.25);
+
+        depthPrimitive.pass = Pass.CESIUM_3D_TILE;
+        rectangleInstance.attributes.show = new ShowGeometryInstanceAttribute(true);
+
+        primitive = new GroundPrimitive({
+            geometryInstances : rectangleInstance,
+            asynchronous : false
+        });
+
+        scene.camera.setView({ destination : rectangle });
+
+        var invertedColor = new Array(4);
+        invertedColor[0] = Color.floatToByte(Color.byteToFloat(depthColor[0]) * scene.invertClassificationColor.red  * scene.invertClassificationColor.alpha);
+        invertedColor[1] = Color.floatToByte(Color.byteToFloat(depthColor[1]) * scene.invertClassificationColor.green * scene.invertClassificationColor.alpha);
+        invertedColor[2] = Color.floatToByte(Color.byteToFloat(depthColor[2]) * scene.invertClassificationColor.blue * scene.invertClassificationColor.alpha);
+        invertedColor[3] = 255;
+
+        scene.groundPrimitives.add(depthPrimitive);
+        expect(scene).toRender(invertedColor);
+
+        scene.groundPrimitives.add(primitive);
+        expect(scene).toRender(rectColor);
+
+        primitive.getGeometryInstanceAttributes('rectangle').show = [0];
+        expect(scene).toRender(depthColor);
+
+        scene.invertClassification = false;
+    });
+
     it('renders bounding volume with debugShowBoundingVolume', function() {
         if (!GroundPrimitive.isSupported(scene)) {
             return;
@@ -422,11 +480,12 @@ defineSuite([
 
         scene.groundPrimitives.add(primitive);
         scene.camera.setView({ destination : rectangle });
-        var pixels = scene.renderForSpecs();
-        expect(pixels[1]).toBeGreaterThanOrEqualTo(0);
-        expect(pixels[1]).toBeGreaterThanOrEqualTo(0);
-        expect(pixels[2]).toBeGreaterThanOrEqualTo(0);
-        expect(pixels[3]).toEqual(255);
+        expect(scene).toRenderAndCall(function(rgba) {
+            expect(rgba[1]).toBeGreaterThanOrEqualTo(0);
+            expect(rgba[1]).toBeGreaterThanOrEqualTo(0);
+            expect(rgba[2]).toBeGreaterThanOrEqualTo(0);
+            expect(rgba[3]).toEqual(255);
+        });
     });
 
     it('renders shadow volume with debugShowShadowVolume', function() {
@@ -442,11 +501,12 @@ defineSuite([
 
         scene.groundPrimitives.add(primitive);
         scene.camera.setView({ destination : rectangle });
-        var pixels = scene.renderForSpecs();
-        expect(pixels[1]).toBeGreaterThanOrEqualTo(0);
-        expect(pixels[1]).toBeGreaterThanOrEqualTo(0);
-        expect(pixels[2]).toBeGreaterThanOrEqualTo(0);
-        expect(pixels[3]).toEqual(255);
+        expect(scene).toRenderAndCall(function(rgba) {
+            expect(rgba[1]).toBeGreaterThanOrEqualTo(0);
+            expect(rgba[1]).toBeGreaterThanOrEqualTo(0);
+            expect(rgba[2]).toBeGreaterThanOrEqualTo(0);
+            expect(rgba[3]).toEqual(255);
+        });
     });
 
     it('get per instance attributes', function() {
@@ -515,6 +575,14 @@ defineSuite([
     });
 
     it('renders with distance display condition per instance attribute', function() {
+        if (!context.floatingPointTexture) {
+            return;
+        }
+
+        if (!GroundPrimitive.isSupported(scene)) {
+            return;
+        }
+
         var near = 10000.0;
         var far = 1000000.0;
         var rect = Rectangle.fromDegrees(-1.0, -1.0, 1.0, 1.0);
@@ -569,13 +637,13 @@ defineSuite([
         var radius = boundingSphere.radius;
 
         scene.camera.lookAt(center, new HeadingPitchRange(0.0, -CesiumMath.PI_OVER_TWO, radius));
-        expect(scene.renderForSpecs()).toEqual([0, 0, 255, 255]);
+        expect(scene).toRender([0, 0, 255, 255]);
 
         scene.camera.lookAt(center, new HeadingPitchRange(0.0, -CesiumMath.PI_OVER_TWO, radius + near + 1.0));
-        expect(scene.renderForSpecs()).not.toEqual([0, 0, 255, 255]);
+        expect(scene).notToRender([0, 0, 255, 255]);
 
         scene.camera.lookAt(center, new HeadingPitchRange(0.0, -CesiumMath.PI_OVER_TWO, radius + far + 1.0));
-        expect(scene.renderForSpecs()).toEqual([0, 0, 255, 255]);
+        expect(scene).toRender([0, 0, 255, 255]);
     });
 
     it('get bounding sphere from per instance attribute', function() {
@@ -623,8 +691,9 @@ defineSuite([
 
         verifyGroundPrimitiveRender(primitive, rectColor);
 
-        var pickObject = scene.pickForSpecs();
-        expect(pickObject.id).toEqual('rectangle');
+        expect(scene).toPickAndCall(function(result) {
+            expect(result.id).toEqual('rectangle');
+        });
     });
 
     it('does not pick when allowPicking is false', function() {
@@ -640,8 +709,7 @@ defineSuite([
 
         verifyGroundPrimitiveRender(primitive, rectColor);
 
-        var pickObject = scene.pickForSpecs();
-        expect(pickObject).not.toBeDefined();
+        expect(scene).notToPick();
     });
 
     it('internally invalid asynchronous geometry resolves promise and sets ready', function() {

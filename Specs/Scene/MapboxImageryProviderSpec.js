@@ -1,10 +1,10 @@
-/*global defineSuite*/
 defineSuite([
         'Scene/MapboxImageryProvider',
         'Core/DefaultProxy',
         'Core/loadImage',
         'Core/Math',
         'Core/Rectangle',
+        'Core/RequestScheduler',
         'Core/WebMercatorTilingScheme',
         'Scene/Imagery',
         'Scene/ImageryLayer',
@@ -17,6 +17,7 @@ defineSuite([
         loadImage,
         CesiumMath,
         Rectangle,
+        RequestScheduler,
         WebMercatorTilingScheme,
         Imagery,
         ImageryLayer,
@@ -24,6 +25,10 @@ defineSuite([
         ImageryState,
         pollToPromise) {
     'use strict';
+
+    beforeEach(function() {
+        RequestScheduler.clearForSpecs();
+    });
 
     afterEach(function() {
         loadImage.createImage = loadImage.defaultCreateImage;
@@ -250,6 +255,9 @@ defineSuite([
             if (tries < 3) {
                 error.retry = true;
             }
+            setTimeout(function() {
+                RequestScheduler.update();
+            }, 1);
         });
 
         loadImage.createImage = function(url, crossOrigin, deferred) {
@@ -270,6 +278,7 @@ defineSuite([
             var imagery = new Imagery(layer, 0, 0, 0);
             imagery.addReference();
             layer._requestImagery(imagery);
+            RequestScheduler.update();
 
             return pollToPromise(function() {
                 return imagery.state === ImageryState.RECEIVED;
@@ -277,6 +286,52 @@ defineSuite([
                 expect(imagery.image).toBeInstanceOf(Image);
                 expect(tries).toEqual(2);
                 imagery.releaseReference();
+            });
+        });
+    });
+
+    it('appends specified format', function() {
+        var provider = new MapboxImageryProvider({
+            url : 'made/up/mapbox/server/',
+            mapId: 'test-id',
+            format: '@2x.png'
+        });
+
+        return pollToPromise(function() {
+            return provider.ready;
+        }).then(function() {
+            spyOn(loadImage, 'createImage').and.callFake(function(url, crossOrigin, deferred) {
+                expect(/made\/up\/mapbox\/server\/test-id\/0\/0\/0@2x\.png\?access_token=/.test(url)).toBe(true);
+
+                // Just return any old image.
+                loadImage.defaultCreateImage('Data/Images/Red16x16.png', crossOrigin, deferred);
+            });
+
+            return provider.requestImage(0, 0, 0).then(function(image) {
+                expect(loadImage.createImage).toHaveBeenCalled();
+            });
+        });
+    });
+
+    it('adds missing period for format', function() {
+        var provider = new MapboxImageryProvider({
+            url : 'made/up/mapbox/server/',
+            mapId: 'test-id',
+            format: 'png'
+        });
+
+        return pollToPromise(function() {
+            return provider.ready;
+        }).then(function() {
+            spyOn(loadImage, 'createImage').and.callFake(function(url, crossOrigin, deferred) {
+                expect(/made\/up\/mapbox\/server\/test-id\/0\/0\/0\.png\?access_token=/.test(url)).toBe(true);
+
+                // Just return any old image.
+                loadImage.defaultCreateImage('Data/Images/Red16x16.png', crossOrigin, deferred);
+            });
+
+            return provider.requestImage(0, 0, 0).then(function(image) {
+                expect(loadImage.createImage).toHaveBeenCalled();
             });
         });
     });

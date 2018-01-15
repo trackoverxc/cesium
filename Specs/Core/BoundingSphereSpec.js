@@ -1,8 +1,6 @@
-/*global defineSuite*/
 defineSuite([
         'Core/BoundingSphere',
         'Core/Cartesian3',
-        'Core/Cartesian4',
         'Core/Cartographic',
         'Core/Ellipsoid',
         'Core/EncodedCartesian3',
@@ -18,7 +16,6 @@ defineSuite([
     ], function(
         BoundingSphere,
         Cartesian3,
-        Cartesian4,
         Cartographic,
         Ellipsoid,
         EncodedCartesian3,
@@ -489,17 +486,25 @@ defineSuite([
 
     it('fromOrientedBoundingBox works with a result', function() {
         var box = OrientedBoundingBox.fromPoints(getPositions());
-        var expected = new BoundingSphere(positionsCenter, positionsRadius);
         var sphere = new BoundingSphere();
         BoundingSphere.fromOrientedBoundingBox(box, sphere);
-        expect(sphere).toEqual(expected);
+        expect(sphere.center).toEqual(positionsCenter);
+        expect(sphere.radius).toBeGreaterThan(1.5);
+        expect(sphere.radius).toBeLessThan(2.0);
     });
 
     it('fromOrientedBoundingBox works without a result parameter', function() {
         var box = OrientedBoundingBox.fromPoints(getPositions());
-        var expected = new BoundingSphere(positionsCenter, positionsRadius);
         var sphere = BoundingSphere.fromOrientedBoundingBox(box);
-        expect(sphere).toEqual(expected);
+        expect(sphere.center).toEqual(positionsCenter);
+        expect(sphere.radius).toBeGreaterThan(1.5);
+        expect(sphere.radius).toBeLessThan(2.0);
+    });
+
+    it('throws from fromOrientedBoundingBox with undefined orientedBoundingBox parameter', function() {
+        expect(function() {
+            BoundingSphere.fromOrientedBoundingBox(undefined);
+        }).toThrowDeveloperError();
     });
 
     it('intersectPlane with sphere on the positive side of a plane', function() {

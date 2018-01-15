@@ -1,9 +1,7 @@
-/*global defineSuite*/
 defineSuite([
         'Core/QuantizedMeshTerrainData',
         'Core/BoundingSphere',
         'Core/Cartesian3',
-        'Core/defined',
         'Core/GeographicTilingScheme',
         'Core/Math',
         'Core/TerrainData',
@@ -13,7 +11,6 @@ defineSuite([
         QuantizedMeshTerrainData,
         BoundingSphere,
         Cartesian3,
-        defined,
         GeographicTilingScheme,
         CesiumMath,
         TerrainData,
